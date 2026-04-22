@@ -1,0 +1,313 @@
+/* Abyssal Gambit — grim-dark oceanic chess roguelike
+   Palette: abyssal teal, bioluminescent cyan, bone-white, brass-gold (tarnished),
+   blood-coral red. Painterly Thronebreaker-style illustrated art via SVG placeholders.
+*/
+:root {
+  --abyss-0: oklch(0.10 0.015 220);   /* deepest ink-ocean */
+  --abyss-1: oklch(0.14 0.022 215);
+  --abyss-2: oklch(0.19 0.03 210);
+  --abyss-3: oklch(0.26 0.04 205);
+  --abyss-4: oklch(0.34 0.05 200);    /* turbid water */
+  --bone: oklch(0.88 0.015 85);
+  --bone-dim: oklch(0.72 0.02 85);
+  --brass: oklch(0.72 0.11 80);        /* tarnished gold */
+  --brass-dim: oklch(0.55 0.09 78);
+  --brass-deep: oklch(0.38 0.07 72);
+  --coral: oklch(0.60 0.18 25);        /* blood coral */
+  --coral-dim: oklch(0.44 0.14 25);
+  --bio: oklch(0.78 0.14 190);         /* bioluminescent cyan */
+  --bio-dim: oklch(0.55 0.11 195);
+  --venom: oklch(0.65 0.14 150);       /* sickly green */
+  --void: oklch(0.35 0.08 290);        /* void purple */
+
+  --parchment: var(--bone);
+  --parchment-dim: var(--bone-dim);
+  --gold: var(--brass);
+  --gold-dim: var(--brass-dim);
+  --gold-deep: var(--brass-deep);
+  --blood: var(--coral);
+  --blood-dim: var(--coral-dim);
+  --arcane: var(--bio);
+  --bg-0: var(--abyss-0);
+  --bg-1: var(--abyss-1);
+  --bg-2: var(--abyss-2);
+  --bg-3: var(--abyss-3);
+  --stone: var(--abyss-3);
+  --stone-hi: var(--abyss-4);
+  --moss: var(--venom);
+  --violet: var(--void);
+  --ink: oklch(0.15 0.02 215);
+
+  /* board */
+  --sq-light: oklch(0.45 0.04 200);
+  --sq-dark: oklch(0.22 0.03 210);
+
+  --r-sm: 2px;
+  --r-md: 3px;
+  --shadow-hard: 0 2px 0 rgba(0,0,0,0.7), 0 12px 32px rgba(0,0,0,0.7);
+  --shadow-inset: inset 0 1px 0 rgba(160,200,220,0.08), inset 0 -2px 0 rgba(0,0,0,0.55);
+}
+
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; background: var(--abyss-0); color: var(--bone); font-family: 'Inter', system-ui, sans-serif; overflow: hidden; }
+
+/* ---------- Stage ---------- */
+.stage {
+  position: fixed; inset: 0;
+  display: grid; place-items: center;
+  background:
+    radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.7) 80%),
+    var(--abyss-0);
+}
+.frame {
+  width: 1440px; height: 900px;
+  position: relative;
+  background: var(--abyss-1);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px oklch(0.06 0.015 220), 0 30px 80px rgba(0,0,0,0.9);
+  transform-origin: center;
+}
+
+/* caustics / water noise */
+.noise::after {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.5 0 0 0 0 0.6 0 0 0 0.08 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  mix-blend-mode: screen; opacity: 0.35;
+}
+
+.vignette::before {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.85) 100%);
+  z-index: 5;
+}
+
+/* slow floating particles (plankton) */
+.plankton { position:absolute; inset:0; pointer-events:none; z-index:1; overflow:hidden; }
+.plankton span {
+  position:absolute; display:block; width:3px; height:3px; border-radius:50%;
+  background: var(--bio); box-shadow:0 0 6px var(--bio);
+  opacity:0.5;
+  animation: drift linear infinite;
+}
+@keyframes drift {
+  0% { transform: translateY(100%) translateX(0); opacity:0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.5; }
+  100% { transform: translateY(-10%) translateX(20px); opacity:0; }
+}
+
+/* ---------- Typography ---------- */
+h1, h2, h3, h4, .serif { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, serif; font-weight: 500; letter-spacing: 0.02em; }
+.mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.caps { text-transform: uppercase; letter-spacing: 0.22em; font-size: 11px; color: var(--bone-dim); }
+.eyebrow { font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.28em; font-size: 10px; color: var(--brass-dim); }
+
+/* ---------- Buttons / chrome ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 20px;
+  border: 1px solid var(--brass-deep);
+  background: linear-gradient(180deg, var(--abyss-3), var(--abyss-2));
+  color: var(--bone); font-family: 'Cinzel', 'Cormorant Garamond', serif; font-size: 15px;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  cursor: pointer; border-radius: var(--r-sm);
+  box-shadow: var(--shadow-inset), var(--shadow-hard);
+  position: relative;
+  transition: all 0.15s ease;
+}
+.btn::before, .btn::after {
+  content:''; position:absolute; width:6px; height:6px; border:1px solid var(--brass-dim);
+}
+.btn::before { top:2px; left:2px; border-right:0; border-bottom:0; }
+.btn::after { bottom:2px; right:2px; border-left:0; border-top:0; }
+.btn:hover { border-color: var(--brass); color: var(--brass); transform: translateY(-1px); }
+.btn:active { transform: translateY(1px); }
+.btn.primary {
+  background: linear-gradient(180deg, oklch(0.36 0.09 200), oklch(0.22 0.06 210));
+  border-color: var(--brass); color: oklch(0.95 0.04 85);
+}
+.btn.primary:hover { background: linear-gradient(180deg, oklch(0.42 0.11 200), oklch(0.28 0.07 210)); }
+.btn.danger { border-color: var(--coral-dim); color: oklch(0.78 0.12 25); }
+.btn.danger:hover { border-color: var(--coral); color: oklch(0.9 0.14 25); }
+.btn.ghost { background: transparent; border-color: var(--abyss-4); }
+.btn.sm { padding: 6px 14px; font-size: 12px; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.card {
+  background: linear-gradient(180deg, var(--abyss-2), var(--abyss-1));
+  border: 1px solid var(--abyss-4);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-inset);
+  position: relative;
+}
+.card.gold { border-color: var(--brass-deep); }
+.card.rare { border-color: var(--bio-dim); }
+.card.blood { border-color: var(--coral-dim); }
+
+/* ornamental filigree corners */
+.ornate { position: relative; }
+.ornate::before, .ornate::after {
+  content:''; position:absolute; width:18px; height:18px;
+  border: 1px solid var(--brass-dim); opacity: 0.85;
+}
+.ornate::before { top:6px; left:6px; border-right:0; border-bottom:0; }
+.ornate::after { bottom:6px; right:6px; border-left:0; border-top:0; }
+.ornate > .corner-tl, .ornate > .corner-br { display:none; }
+
+.divider {
+  height: 1px; background: linear-gradient(90deg, transparent, var(--brass-deep), transparent);
+  margin: 12px 0;
+}
+.divider.fancy {
+  height: 14px; background: none; display:flex; align-items:center; justify-content:center; margin: 14px 0;
+}
+.divider.fancy::before, .divider.fancy::after {
+  content:''; flex:1; height:1px; background: linear-gradient(90deg, transparent, var(--brass-deep));
+}
+.divider.fancy::after { background: linear-gradient(90deg, var(--brass-deep), transparent); }
+.divider.fancy span { margin:0 12px; color: var(--brass-dim); font-size:10px; }
+
+/* ---------- Top bar ---------- */
+.topbar {
+  position: absolute; top: 0; left: 0; right: 0; height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.7), rgba(0,0,0,0.2));
+  border-bottom: 1px solid var(--abyss-4);
+  box-shadow: 0 0 24px rgba(0,30,50,0.6);
+  z-index: 20;
+}
+.topbar::after {
+  content:''; position:absolute; left:0; right:0; bottom:-1px; height:1px;
+  background: linear-gradient(90deg, transparent, var(--brass-dim), transparent);
+}
+.topbar .stat { display:flex; align-items:center; gap:8px; font-family:'JetBrains Mono', monospace; font-size: 13px; color: var(--bone); }
+.topbar .stat .lbl { color: var(--bone-dim); text-transform:uppercase; font-size:10px; letter-spacing:0.2em; }
+
+/* ---------- World Map ---------- */
+.map-wrap { position:absolute; inset:56px 0 0 0; display:flex; flex-direction:row; }
+.map-svg { flex:1; display:block; }
+
+.map-node { cursor:pointer; transition: transform 0.2s, filter 0.2s; }
+.map-node:hover { filter: drop-shadow(0 0 10px var(--bio)); }
+.map-node.locked { opacity:0.28; cursor:not-allowed; }
+.map-node.available .halo { animation: pulse 2.4s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
+
+.map-side {
+  width: 290px; border-left: 1px solid var(--abyss-4); padding: 16px;
+  background: linear-gradient(180deg, var(--abyss-1), var(--abyss-0));
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+}
+
+/* ---------- Chessboard (kept for world-map hints; Match uses its own) ---------- */
+.board {
+  display:grid;
+  grid-template-columns: repeat(var(--n,8), 1fr);
+  grid-template-rows: repeat(var(--n,8), 1fr);
+  border: 4px solid var(--abyss-3);
+  box-shadow: 0 0 0 1px var(--brass-deep), 0 20px 50px rgba(0,0,0,0.9), var(--shadow-inset);
+  background: var(--abyss-3);
+}
+.sq { position:relative; display:grid; place-items:center; font-size:44px; user-select:none; }
+.sq.light { background: var(--sq-light); color: var(--ink); }
+.sq.dark { background: var(--sq-dark); color: oklch(0.85 0.03 85); }
+
+/* ---------- Panels ---------- */
+.panel {
+  background: linear-gradient(180deg, var(--abyss-2), var(--abyss-1));
+  border: 1px solid var(--abyss-4);
+  border-radius: var(--r-md);
+  padding: 14px;
+  position: relative;
+}
+.panel::before {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background: linear-gradient(180deg, rgba(160,200,220,0.04), transparent 40%);
+  border-radius: var(--r-md);
+}
+
+/* scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--abyss-1); }
+::-webkit-scrollbar-thumb { background: var(--abyss-4); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--abyss-3); }
+
+/* ---------- Modal ---------- */
+.modal-backdrop {
+  position:absolute; inset:0; background: rgba(0,5,10,0.78); backdrop-filter: blur(2px);
+  display:grid; place-items:center; z-index:30;
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+.modal {
+  width: 560px; max-width: 90%;
+  background: linear-gradient(180deg, var(--abyss-2), var(--abyss-1));
+  border: 1px solid var(--brass-deep);
+  border-radius: var(--r-md);
+  box-shadow: 0 40px 100px rgba(0,0,0,0.95), var(--shadow-inset), 0 0 60px rgba(30,120,150,0.2);
+  padding: 28px;
+}
+
+/* tooltip */
+.tt {
+  position:absolute; z-index:40;
+  background: var(--abyss-0); border: 1px solid var(--brass-deep);
+  padding: 8px 12px; font-size:12px; color: var(--bone);
+  pointer-events:none; box-shadow: var(--shadow-hard);
+  max-width: 260px;
+}
+
+/* tweaks */
+.tweaks {
+  position:fixed; bottom:20px; right:20px; z-index:1000;
+  width: 280px; background: var(--abyss-0); border:1px solid var(--brass-deep);
+  padding: 14px; color: var(--bone); font-size: 12px;
+  display: none;
+  box-shadow: var(--shadow-hard);
+}
+.tweaks.on { display:block; }
+.tweaks h4 { margin:0 0 8px; font-size: 14px; color: var(--brass); font-family: 'Cinzel', serif; letter-spacing: 0.1em; }
+.tweaks .row { display:flex; justify-content:space-between; align-items:center; margin: 6px 0; }
+.tweaks select, .tweaks input { background: var(--abyss-2); color: var(--bone); border:1px solid var(--abyss-4); padding:3px 6px; font-family:inherit; font-size:12px; }
+
+/* screen transition */
+.screen { animation: screenIn 0.3s ease; }
+@keyframes screenIn { from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;} }
+@keyframes dlgIn { from{opacity:0; transform:translateY(3px);} to{opacity:1; transform:none;} }
+@keyframes dlgBlink { 0%,100%{opacity:0.3; transform:translateX(0)} 50%{opacity:1; transform:translateX(2px)} }
+
+.pill { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border:1px solid var(--abyss-4); border-radius:999px; font-size:11px; font-family:'JetBrains Mono', monospace; color: var(--bone-dim); text-transform:uppercase; letter-spacing:0.1em; }
+
+.node-badge {
+  display:inline-grid; place-items:center;
+  width: 40px; height: 40px; border-radius:50%;
+  border:1px solid var(--brass-deep); background: var(--abyss-2);
+  font-size: 20px;
+}
+
+/* painterly portrait placeholder — dark ocean wash w/ noise + teal gradient */
+.portrait {
+  width:100%; aspect-ratio:1;
+  background:
+    radial-gradient(ellipse at 40% 30%, oklch(0.28 0.05 200 / 0.9), transparent 60%),
+    radial-gradient(ellipse at 70% 80%, oklch(0.18 0.08 280 / 0.8), transparent 60%),
+    linear-gradient(180deg, var(--abyss-3), var(--abyss-0));
+  border: 1px solid var(--brass-deep);
+  display:grid; place-items:center;
+  font-family:'JetBrains Mono', monospace; font-size:10px;
+  color: var(--bone-dim); text-transform:uppercase; letter-spacing:0.15em;
+  position:relative;
+  box-shadow: inset 0 0 40px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(180,140,60,0.2);
+}
+.portrait::before {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.018' numOctaves='3'/><feColorMatrix values='0 0 0 0 0.2 0 0 0 0 0.35 0 0 0 0 0.4 0 0 0 0.4 0'/></filter><rect width='100%' height='100%' filter='url(%23f)'/></svg>");
+  mix-blend-mode: overlay; opacity:0.7;
+}
+.portrait .glyph {
+  font-size: 80px; font-family:'Cinzel', serif; color: var(--bone); opacity:0.95;
+  text-shadow: 0 4px 20px rgba(0,0,0,0.9), 0 0 30px oklch(0.5 0.12 190 / 0.4);
+  position:relative; z-index:1;
+}

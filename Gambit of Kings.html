@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Abyssal Gambit — UI Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cormorant+Garamond:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<div class="stage">
+  <div class="frame vignette" id="frame">
+    <div id="root"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="data.js?v=3"></script>
+<script src="map.js?v=3"></script>
+<script src="opdata.js?v=1"></script>
+
+<script type="text/babel" src="screens/MainMenu.jsx"></script>
+<script type="text/babel" src="screens/ClassSelect.jsx"></script>
+<script type="text/babel" src="screens/ObjectiveIcon.jsx"></script>
+<script type="text/babel" src="screens/OpTopBar.jsx?v=1"></script>
+<script type="text/babel" src="screens/OperationCenter.jsx?v=1"></script>
+<script type="text/babel" src="screens/ManageFollower.jsx?v=1"></script>
+<script type="text/babel" src="screens/Evolution.jsx?v=1"></script>
+<script type="text/babel" src="screens/Trader.jsx?v=1"></script>
+<script type="text/babel" src="screens/CommandChamber.jsx?v=1"></script>
+<script type="text/babel" src="screens/WorldMap.jsx"></script>
+<script type="text/babel" src="screens/NodePreview.jsx"></script>
+<script type="text/babel" src="screens/Match.jsx"></script>
+<script type="text/babel" src="screens/RewardShop.jsx"></script>
+<script type="text/babel" src="screens/Inventory.jsx"></script>
+<script type="text/babel" src="app.jsx?v=2"></script>
+
+<script>
+// Auto-scale frame to viewport
+function fit() {
+  const f = document.getElementById('frame');
+  if (!f) return;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const s = Math.min(vw/1440, vh/900);
+  f.style.transform = `scale(${s})`;
+}
+window.addEventListener('resize', fit);
+fit();
+</script>
+</body>
+</html>
