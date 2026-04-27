@@ -56,46 +56,81 @@ const AUGMENTATIONS = [
 // is a copy of an archetype with its own name, evo level, and augmentations.
 const FOLLOWER_ARCHETYPES = {
   larva: {
-    key:'larva', name:'Brood-Larva', role:'Pawn', glyph:'♙',
+    key:'larva', name:'Brood-Larva', role:'Pawn', pieceType:'Pawn', glyph:'♙',
     baseHp:2, baseMove:'1 forward, captures diagonal',
     desc:'The unshaped. Will become whatever the deep demands.',
     color:'oklch(0.62 0.08 145)',
+    innate:'On reaching far rank, may evolve into any Tier-1 follower.',
+    modifier:'+1 Vigor when adjacent to allied larvae.',
+    active:'— None —',
+    move:'1 square forward (2 on first move)',
+    capture:'1 square forward-diagonal',
   },
   outrider: {
-    key:'outrider', name:'Hammerhead Outrider', role:'Knight', glyph:'♘',
+    key:'outrider', name:'Hammerhead Outrider', role:'Knight', pieceType:'Knight', glyph:'♘',
     baseHp:3, baseMove:'L-hop, ignores blockers',
     desc:'Breaches in the blind spot. Smells blood first.',
     color:'oklch(0.68 0.1 195)',
+    innate:'Cannot be blocked by intervening pieces.',
+    modifier:'First strike each battle deals +1 damage.',
+    active:'Blood-Frenzy · After a kill, may move again (1/turn).',
+    move:'L-shape (2+1) · range 1 hop',
+    capture:'Same as move · L-shape',
   },
   prelate: {
-    key:'prelate', name:'Anglerfish Prelate', role:'Bishop', glyph:'♗',
+    key:'prelate', name:'Anglerfish Prelate', role:'Bishop', pieceType:'Bishop', glyph:'♗',
     baseHp:3, baseMove:'Any diagonal',
     desc:'Drifts the diagonals, luring with its bioluminescent lure.',
     color:'oklch(0.7 0.12 250)',
+    innate:'Lure: enemies on its diagonal cannot retreat.',
+    modifier:'+1 range when battle starts in dark squares.',
+    active:'Bioluminescent Beacon · Reveal a 3×3 area for 2 turns.',
+    move:'Diagonal · unlimited range',
+    capture:'Diagonal · unlimited range',
   },
   colossus: {
-    key:'colossus', name:'Reef Colossus', role:'Rook', glyph:'♖',
+    key:'colossus', name:'Reef Colossus', role:'Rook', pieceType:'Rook', glyph:'♖',
     baseHp:5, baseMove:'Any orthogonal',
     desc:'Calcified titan. Moves along current-lines.',
     color:'oklch(0.6 0.1 35)',
+    innate:'Cannot be pushed off its square.',
+    modifier:'+2 Vigor when battle has ≥3 allied pieces alive.',
+    active:'Tide-Slam · Knock back all adjacent enemies 1 square.',
+    move:'Orthogonal · unlimited range',
+    capture:'Orthogonal · unlimited range',
   },
   matriarch: {
-    key:'matriarch', name:'Kraken Matriarch', role:'Queen', glyph:'♕',
+    key:'matriarch', name:'Kraken Matriarch', role:'Queen', pieceType:'Queen', glyph:'♕',
     baseHp:5, baseMove:'Any direction, any range',
     desc:'Tentacles part the tide.',
     color:'oklch(0.58 0.14 290)',
+    innate:'Strikes hit all enemies in a 1-square arc.',
+    modifier:'+1 to all stats while a King is on the board.',
+    active:'Vortex-Pull · Drag one ally to an adjacent square.',
+    move:'Any direction · unlimited range',
+    capture:'Any direction · unlimited range',
   },
   myrmidon: {
-    key:'myrmidon', name:'Coral Myrmidon', role:'Rook-variant', glyph:'♜',
+    key:'myrmidon', name:'Coral Myrmidon', role:'Rook-variant', pieceType:'Rook', glyph:'♜',
     baseHp:6, baseMove:'Orthogonal, grants ally +1 hide',
     desc:'Pawn-proof bulwark of calcified bone.',
     color:'oklch(0.6 0.09 40)',
+    innate:'Adjacent allies gain +1 Vigor.',
+    modifier:'Cannot be captured by Pawn-tier on opening turn.',
+    active:'Calcify · Make adjacent ally immune for 1 turn.',
+    move:'Orthogonal · range 4',
+    capture:'Orthogonal · range 4',
   },
   witch: {
-    key:'witch', name:'Nautilus Witch', role:'Queen-variant', glyph:'♛',
+    key:'witch', name:'Nautilus Witch', role:'Queen-variant', pieceType:'Queen', glyph:'♛',
     baseHp:4, baseMove:'Any direction. Once: vortex-pull an ally.',
     desc:'She speaks the tide into obedience.',
     color:'oklch(0.6 0.12 310)',
+    innate:'Once per battle, swap places with any allied piece.',
+    modifier:'+1 movement range when allied King has full Vigor.',
+    active:'Tide-Whisper · Charm an enemy Pawn for 2 turns.',
+    move:'Any direction · range 5',
+    capture:'Any direction · range 5',
   },
 };
 
@@ -219,6 +254,7 @@ const OP_ASSIGNMENTS = [
     rewards:{coral:60, dna:30, lumin:10, relic:null},
     palette:{top:'oklch(0.24 0.06 190)', bottom:'oklch(0.09 0.025 210)', accent:'oklch(0.72 0.14 195)'},
     map: 0,
+    width: 6,
   },
   {
     id:'as-eel-hymn', kind:'main', name:'The Eel-Hymn Gallery',
@@ -231,6 +267,7 @@ const OP_ASSIGNMENTS = [
     rewards:{coral:120, dna:70, lumin:35, relic:'r-pendulum'},
     palette:{top:'oklch(0.22 0.08 270)', bottom:'oklch(0.08 0.03 280)', accent:'oklch(0.68 0.13 290)'},
     map: 1,
+    width: 8,
   },
   {
     id:'as-tidebreak', kind:'main', name:'Tidebreak at the Black Spires',
@@ -243,6 +280,7 @@ const OP_ASSIGNMENTS = [
     rewards:{coral:140, dna:55, lumin:45, relic:'r-crown'},
     palette:{top:'oklch(0.24 0.1 30)', bottom:'oklch(0.1 0.04 25)', accent:'oklch(0.68 0.15 25)'},
     map: 1,
+    width: 10,
   },
   {
     id:'as-harvest-vein', kind:'side', name:'Coral-Vein Harvest',
@@ -253,6 +291,7 @@ const OP_ASSIGNMENTS = [
     rewards:{coral:90, dna:10, lumin:20, relic:null},
     palette:{top:'oklch(0.32 0.08 45)', bottom:'oklch(0.12 0.04 40)', accent:'oklch(0.72 0.13 45)'},
     map: 0,
+    width: 4,
   },
   {
     id:'as-pale-mariner-charts', kind:'side', name:'The Mariner\'s Chart',
@@ -263,6 +302,7 @@ const OP_ASSIGNMENTS = [
     rewards:{coral:50, dna:45, lumin:55, relic:'r-shell'},
     palette:{top:'oklch(0.26 0.06 210)', bottom:'oklch(0.09 0.02 215)', accent:'oklch(0.75 0.1 200)'},
     map: 0,
+    width: 6,
   },
 ];
 
@@ -292,11 +332,15 @@ function buildStartingRoster(cls) {
   for (const k of (cls.deck || [])) {
     const archetype = deckMap[k];
     if (!archetype) continue;
+    // Random number of aug slots: 0-5 (weighted toward 2-3)
+    const slotRoll = Math.random();
+    const slotCount = slotRoll < 0.08 ? 0 : slotRoll < 0.22 ? 1 : slotRoll < 0.5 ? 2 : slotRoll < 0.78 ? 3 : slotRoll < 0.93 ? 4 : 5;
     roster.push({
       instanceId: `f-${idc++}`,
       archetype,
       name: generateFollowerName(archetype, idc),
       evoTier: 0,
+      augSlotCount: slotCount,
       augments: { optic:null, neural:null, blood:null, fin:null, chassis:null },
       inPool: false, // deployment pool
     });

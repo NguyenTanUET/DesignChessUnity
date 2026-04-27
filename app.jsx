@@ -88,18 +88,18 @@ const App = () => {
   const newRun = () => {
     localStorage.removeItem('gok.run');
     setRun(null);
-    setScreen('class');
+    setScreen('menu');
   };
 
   return (
     <div style={{ position:'absolute', inset:0 }}>
-      {screen === 'menu' && <MainMenu go={setScreen}/>}
-      {screen === 'class' && <ClassSelect go={setScreen} setRun={setRun}/>}
+      {screen === 'menu' && <MainMenu go={setScreen} setRun={setRun}/>}
 
       {/* Operation Center suite */}
       {screen === 'op-hub' && run && <OperationCenter run={run} setRun={setRun} go={setScreen}/>}
       {screen === 'op-follower' && run && <ManageFollower run={run} setRun={setRun} go={setScreen}/>}
-      {screen === 'op-evolve' && run && <EvolutionScreen run={run} setRun={setRun} go={setScreen}/>}
+      {screen === 'op-evolve' && run && <ManageFollower run={run} setRun={setRun} go={setScreen} initialSubTab="evolution"/>}
+      {screen === 'op-lineup' && run && <ManageFollower run={run} setRun={setRun} go={setScreen} initialSubTab="lineup"/>}
       {screen === 'op-trader' && run && <Trader run={run} setRun={setRun} go={setScreen}/>}
       {screen === 'op-command' && run && <CommandChamber run={run} setRun={setRun} go={setScreen}/>}
 
@@ -123,10 +123,8 @@ const App = () => {
         <select value={screen} onChange={e=>setScreen(e.target.value)}
           style={{ background:'#000', color:'var(--bone-dim)', border:'1px solid var(--abyss-4)', fontSize:10, padding:'2px 6px', fontFamily:'JetBrains Mono, monospace' }}>
           <option value="menu">Menu</option>
-          <option value="class">Class Select</option>
           <option value="op-hub">Op · Hub</option>
           <option value="op-follower">Op · Followers</option>
-          <option value="op-evolve">Op · Evolution</option>
           <option value="op-trader">Op · Trader</option>
           <option value="op-command">Op · Command</option>
           <option value="map">World Map</option>

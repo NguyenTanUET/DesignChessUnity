@@ -12,40 +12,61 @@ const CommandChamber = ({ run, setRun, go }) => {
 
   // Deployment synced with Manage Follower
   const roster = run.roster || [];
-  const inPool = roster.filter(f => f.inPool);
-  const poolCap = 20;
-  const relicsLoadout = run.relicsLoadout || [];
-  const relicsOwned = run.relicsOwned || [];
+  const allLineups = run.lineups || {};
 
-  const togglePool = (id) => {
-    setRun(r => {
-      const next = r.roster.map(f => {
-        if (f.instanceId !== id) return f;
-        if (!f.inPool && r.roster.filter(x=>x.inPool).length >= poolCap) return f;
-        return { ...f, inPool: !f.inPool };
-      });
-      return { ...r, roster: next };
-    });
-  };
-  const toggleRelic = (id) => {
-    setRun(r => {
-      const load = r.relicsLoadout || [];
-      if (load.includes(id)) return { ...r, relicsLoadout: load.filter(x => x !== id) };
-      if (load.length >= 3) return r;
-      return { ...r, relicsLoadout: [...load, id] };
-    });
-  };
+  // Required width for this assignment (defaults to 6 if unset)
+  const requiredWidth = assignment.width || 6;
+
+  // Eligible lineups: any saved layout matching the required width.
+  // (Player can have multiple variants — keyed by name; legacy shape: {[width]:{squareId:instanceId}})
+  // We treat each width slot as a single lineup. If the player wants multiple per width
+  // we'd need a richer schema; for now show all 4 widths and highlight matches.
+  const formations = [
+    { w:4,  label:'W4',  title:'Skirmish',  cap:6,  color:'oklch(0.7 0.12 35)' },
+    { w:6,  label:'W6',  title:'Vanguard',  cap:10, color:'oklch(0.7 0.13 195)' },
+    { w:8,  label:'W8',  title:'Phalanx',   cap:14, color:'oklch(0.72 0.12 75)' },
+    { w:10, label:'W10', title:'Tide-Wall', cap:18, color:'oklch(0.65 0.15 290)' },
+  ];
+
+  // Eligible lineups for this assignment: all named plans saved at the required width
+  const eligibleLineups = (allLineups[requiredWidth] || []).filter(ln =>
+    Object.keys(ln.board || {}).length > 0
+  );
+
+  // Selected lineup id within the eligible array
+  const [selectedLineupId, setSelectedLineupId] = React.useState(() =>
+    eligibleLineups[0]?.id || null
+  );
+
+  // Reset when assignment changes
+  React.useEffect(() => {
+    const fresh = (allLineups[requiredWidth] || []).filter(ln =>
+      Object.keys(ln.board || {}).length > 0
+    );
+    setSelectedLineupId(fresh[0]?.id || null);
+  // eslint-disable-next-line
+  }, [picked]);
+
+  const selectedLineup = eligibleLineups.find(l => l.id === selectedLineupId) || null;
+  const selectedBoard = selectedLineup?.board || {};
+  const selectedDeployedCount = Object.values(selectedBoard).filter(Boolean).length;
 
   const overseer = OVERSEERS[assignment.overseer];
 
-  const deploy = () => {
-    if (inPool.length === 0) return;
+  const canDeploy = !!selectedLineup && selectedDeployedCount > 0;
+
+  const undertake = () => {
+    if (!canDeploy) return;
+    const placedIds = new Set(Object.values(selectedBoard));
     setRun(r => ({
       ...r,
       pickedAssignmentId: assignment.id,
       deployedAssignmentId: assignment.id,
       assignmentIdx: assignment.map || 0,
       currentNodeIdx: 0,
+      lineupWidth: requiredWidth,
+      activeLineupId: selectedLineupId,
+      roster: r.roster.map(f => ({ ...f, inPool: placedIds.has(f.instanceId) })),
     }));
     go('map');
   };
@@ -100,82 +121,124 @@ const CommandChamber = ({ run, setRun, go }) => {
         <div style={{ borderLeft:'1px solid var(--abyss-4)',
           background:'linear-gradient(180deg, var(--abyss-1), var(--abyss-0))',
           overflowY:'auto', padding:'18px 14px' }}>
-          <div className="caps" style={{ marginBottom:8 }}>Deployment Option</div>
-          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bio-dim)', letterSpacing:'0.2em', marginBottom:14 }}>
-            FOLLOWERS · {inPool.length}/{poolCap}
+          <div className="caps" style={{ marginBottom:6 }}>Deployment Option</div>
+          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bio-dim)',
+            letterSpacing:'0.2em', marginBottom:14 }}>
+            REQUIRED FORMATION · W{requiredWidth}
           </div>
 
-          {/* follower pool */}
-          <div style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:12, maxHeight:340, overflowY:'auto' }}>
-            {roster.length === 0 && (
-              <div style={{ padding:'16px', textAlign:'center', border:'1px dashed var(--abyss-4)',
-                color:'var(--bone-dim)', fontStyle:'italic', fontSize:11 }}>No followers.</div>
-            )}
-            {roster.map(f => {
-              const a = FOLLOWER_ARCHETYPES[f.archetype];
-              return (
-                <div key={f.instanceId} onClick={()=>togglePool(f.instanceId)}
-                  title={f.name}
-                  style={{
-                    display:'flex', alignItems:'center', gap:8, padding:'6px 8px', cursor:'pointer',
-                    background: f.inPool ? 'linear-gradient(90deg, var(--abyss-3), var(--abyss-2))' : 'transparent',
-                    border:'1px solid', borderColor: f.inPool ? a.color : 'var(--abyss-3)',
-                  }}>
-                  <div style={{ fontSize:16, color:a.color, fontFamily:'Cinzel, serif', width:20, textAlign:'center' }}>{a.glyph}</div>
-                  <div style={{ flex:1, minWidth:0, fontFamily:'Cinzel, serif', fontSize:11, color:'var(--bone)',
-                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                    {f.name}
+          {/* Required formation banner */}
+          <div style={{ padding:'10px 12px', background:'var(--abyss-2)',
+            border:`1px solid ${assignment.palette.accent}`,
+            borderLeft:`3px solid ${assignment.palette.accent}`, marginBottom:14 }}>
+            <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5,
+              color:assignment.palette.accent, letterSpacing:'0.22em', textTransform:'uppercase' }}>
+              ◣ This Tide Demands
+            </div>
+            <div style={{ fontFamily:'Cinzel, serif', fontSize:14, color:'var(--bone)',
+              letterSpacing:'0.05em', marginTop:4 }}>
+              {(formations.find(f=>f.w===requiredWidth)?.title) || 'Vanguard'} · W{requiredWidth}
+            </div>
+            <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12, color:'var(--bone-dim)',
+              fontStyle:'italic', marginTop:3 }}>
+              Only formations of this width may answer the call.
+            </div>
+          </div>
+
+          <div className="caps" style={{ marginBottom:8 }}>Choose a Lineup</div>
+
+          {eligibleLineups.length === 0 && (
+            <div style={{ padding:'18px 14px', border:'1px dashed var(--abyss-4)',
+              background:'var(--abyss-1)', textAlign:'center' }}>
+              <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone-dim)',
+                fontStyle:'italic', lineHeight:1.5, marginBottom:10 }}>
+                No W{requiredWidth} lineup has been arrayed.
+              </div>
+              <button className="btn primary"
+                onClick={()=>{
+                  setRun(r => ({ ...r, lineupWidth: requiredWidth }));
+                  go('op-lineup');
+                }}
+                style={{ width:'100%', justifyContent:'center', padding:'10px' }}>
+                + Forge New Lineup
+              </button>
+              <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:9,
+                color:'var(--bone-dim)', letterSpacing:'0.15em' }}>
+                ‣ OPENS LINEUP TAB · W{requiredWidth}
+              </div>
+            </div>
+          )}
+
+          {eligibleLineups.length > 0 && (
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {eligibleLineups.map(ln => {
+                const placed = Object.values(ln.board).filter(Boolean);
+                const sel = selectedLineupId === ln.id;
+                const accent = formations.find(f=>f.w===requiredWidth)?.color || assignment.palette.accent;
+                return (
+                  <div key={ln.id} onClick={()=>setSelectedLineupId(ln.id)}
+                    style={{
+                      padding:'12px 14px', cursor:'pointer',
+                      background: sel ? 'linear-gradient(90deg, var(--abyss-3), var(--abyss-2))' : 'var(--abyss-1)',
+                      border:'1px solid', borderColor: sel ? accent : 'var(--abyss-3)',
+                      borderLeft: sel ? `3px solid ${accent}` : '3px solid transparent',
+                      transition:'all 0.15s',
+                    }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
+                      <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone)',
+                        letterSpacing:'0.05em', display:'flex', alignItems:'center', gap:6 }}>
+                        <span style={{ color: accent, fontSize:11 }}>◈</span>
+                        {ln.name}
+                      </div>
+                      <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9,
+                        color:accent, letterSpacing:'0.18em' }}>
+                        {placed.length} SOULS
+                      </div>
+                    </div>
+                    {/* mini token row */}
+                    <div style={{ display:'flex', gap:3, marginTop:8, flexWrap:'wrap' }}>
+                      {placed.slice(0, 12).map((iid, i) => {
+                        const fl = roster.find(x => x.instanceId === iid);
+                        if (!fl) return null;
+                        const a = FOLLOWER_ARCHETYPES[fl.archetype];
+                        return (
+                          <div key={i} title={fl.name} style={{
+                            width:18, height:18, display:'grid', placeItems:'center',
+                            background:'var(--abyss-0)', border:`1px solid ${a.color}`,
+                            color:a.color, fontFamily:'Cinzel, serif', fontSize:11,
+                          }}>{a.glyph}</div>
+                        );
+                      })}
+                      {placed.length > 12 && (
+                        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9,
+                          color:'var(--bone-dim)', alignSelf:'center', marginLeft:4 }}>
+                          +{placed.length - 12}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)' }}>
-                    E{f.evoTier}
-                  </div>
-                  <div style={{
-                    width:14, height:14, border:`1px solid ${f.inPool ? 'var(--brass)' : 'var(--abyss-4)'}`,
-                    background: f.inPool ? 'var(--brass-deep)' : 'transparent',
-                    fontSize:9, display:'grid', placeItems:'center', color: f.inPool ? 'var(--abyss-0)':'transparent',
-                  }}>✓</div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
 
-          <div className="caps" style={{ marginBottom:8, marginTop:14 }}>Relics · {relicsLoadout.length}/3</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:12 }}>
-            {relicsOwned.length === 0 && (
-              <div style={{ padding:'10px', textAlign:'center', border:'1px dashed var(--abyss-4)',
-                color:'var(--bone-dim)', fontStyle:'italic', fontSize:11 }}>Reliquary empty.</div>
-            )}
-            {relicsOwned.map(id => {
-              const rel = OP_RELICS.find(r => r.id === id);
-              if (!rel) return null;
-              const carried = relicsLoadout.includes(id);
-              return (
-                <div key={id} onClick={()=>toggleRelic(id)}
-                  style={{
-                    display:'flex', alignItems:'center', gap:8, padding:'6px 8px', cursor:'pointer',
-                    background: carried ? 'linear-gradient(90deg, var(--abyss-3), var(--abyss-2))' : 'transparent',
-                    border:'1px solid', borderColor: carried ? 'var(--brass)' : 'var(--abyss-3)',
-                  }}>
-                  <div style={{ fontSize:14, color: carried?'var(--brass)':'var(--bone-dim)', width:18, textAlign:'center' }}>{rel.glyph}</div>
-                  <div style={{ flex:1, fontFamily:'Cinzel, serif', fontSize:11, color:'var(--bone)' }}>{rel.name}</div>
-                  <div style={{
-                    width:14, height:14, border:`1px solid ${carried ? 'var(--brass)' : 'var(--abyss-4)'}`,
-                    background: carried ? 'var(--brass-deep)' : 'transparent',
-                    fontSize:9, display:'grid', placeItems:'center', color: carried ? 'var(--abyss-0)':'transparent',
-                  }}>✓</div>
-                </div>
-              );
-            })}
-          </div>
+              <button className="btn ghost sm"
+                onClick={()=>{
+                  setRun(r => ({ ...r, lineupWidth: requiredWidth }));
+                  go('op-lineup');
+                }}
+                style={{ marginTop:4, justifyContent:'center', padding:'8px' }}>
+                ✎ Edit / Forge Another W{requiredWidth} Lineup
+              </button>
+            </div>
+          )}
 
-          {/* Deploy button */}
-          <div className="divider fancy"><span>◈ DEPLOY ◈</span></div>
+          {/* Undertake button */}
+          <div className="divider fancy" style={{ marginTop:18 }}><span>◈ ORDERS ◈</span></div>
           <button
             className="btn primary"
-            disabled={inPool.length === 0}
-            onClick={deploy}
+            disabled={!canDeploy}
+            onClick={undertake}
             style={{ width:'100%', justifyContent:'center', padding:'14px', fontSize:14 }}>
-            {inPool.length === 0 ? 'Select Followers First' : `Deploy ${inPool.length} to ${assignment.name}`}
+            {!canDeploy ? 'Array a Lineup First' : `Undertake Assignment`}
           </button>
           <div style={{ marginTop:8, fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
             letterSpacing:'0.15em', textAlign:'center' }}>

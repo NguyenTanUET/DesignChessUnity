@@ -4,7 +4,6 @@ const OpTopBar = ({ run, setRun, go, current, subtitle }) => {
   const tabs = [
     { id:'op-hub',      label:'Hub',           glyph:'◈' },
     { id:'op-follower', label:'Followers',     glyph:'♘' },
-    { id:'op-evolve',   label:'Evolution',     glyph:'✧' },
     { id:'op-trader',   label:'Trader',        glyph:'⚖' },
     { id:'op-command',  label:'Command',       glyph:'✠' },
   ];

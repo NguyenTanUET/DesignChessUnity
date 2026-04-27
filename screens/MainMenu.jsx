@@ -1,6 +1,64 @@
 // Main menu — Abyssal Gambit
-const MainMenu = ({ go }) => {
+const MainMenu = ({ go, setRun }) => {
   const [hover, setHover] = React.useState(null);
+
+  const spawnNewBrood = () => {
+    const c = CLASSES[0]; // default brood — Leviathan
+    const roster = window.buildStartingRoster ? window.buildStartingRoster(c) : [];
+    roster.slice(0, 6).forEach(f => { f.inPool = true; });
+
+    // Seed example lineups. Player half = w × (fullH/2). Place on TOP 2 rows (r0 + r1).
+    const buildLineup = (w, name, pickerFn) => {
+      const board = {};
+      const pool = pickerFn(roster);
+      pool.forEach((f, i) => {
+        if (!f) return;
+        if (i < w) board[`r0c${i}`] = f.instanceId;
+        else if (i < w*2) board[`r1c${i-w}`] = f.instanceId;
+      });
+      return { id: `ln-${w}-${name.toLowerCase().replace(/\s+/g,'-')}-${Math.random().toString(36).slice(2,6)}`, name, board };
+    };
+    const majors = roster.filter(f => f.archetype !== 'larva');
+    const larvae = roster.filter(f => f.archetype === 'larva');
+    const initialLineups = {
+      4:  [buildLineup(4,  'Bone Spear',    r => [...majors.slice(0,4), ...larvae.slice(0,4)])],
+      6:  [
+        buildLineup(6,  'Reef Vanguard', r => [...majors.slice(0,6), ...larvae.slice(0,6)]),
+        buildLineup(6,  'Hooked Net',    r => [...majors.slice(2,8), ...larvae.slice(0,6)]),
+      ],
+      8:  [
+        buildLineup(8,  'Standard Tide', r => [...majors.slice(0,8), ...larvae.slice(0,8)]),
+      ],
+      10: [],
+    };
+
+    setRun({
+      cls: c,
+      hp: c.startHp, hpMax: c.startHp,
+      gold: c.startGold,
+      deck: [...c.deck],
+      relics: [RELICS[0]],
+      mapSeed: Math.floor(Math.random()*9999),
+      currentNode: 'n-start',
+      visited: ['n-start'],
+      floor: 0,
+      assignmentIdx: 0,
+      currentNodeIdx: 0,
+      res: { coral: 120, dna: 40, lumin: 30 },
+      roster,
+      augInventory: ['a-lantern-eye','a-brine-humors','a-barnacle-plate','a-cartilage-foil','a-ganglion-knot','a-abyssal-pupil','a-saltwater-lung','a-coral-sail','a-nacre-shell','a-vitreous-lens','a-black-ichor','a-hive-mind','a-eel-ribbon','a-ossuary-spine'],
+      relicsOwned: ['r-lantern','r-sigil'],
+      relicsLoadout: ['r-lantern'],
+      augLoadout: [],
+      traderPurchased: {},
+      pickedAssignmentId: null,
+      deployedAssignmentId: null,
+      lineups: initialLineups,
+      lineupWidth: 6,
+    });
+    go('op-hub');
+  };
+
   return (
     <div className="screen noise" style={{ position:'absolute', inset:0, display:'grid', placeItems:'center', background:'var(--abyss-0)' }}>
       {/* abyssal light shafts */}
@@ -65,7 +123,7 @@ const MainMenu = ({ go }) => {
 
         <div style={{ display:'flex', flexDirection:'column', gap:10, width:340, margin:'0 auto' }}>
           {[
-            { id:'new', label:'Spawn a New Brood', kind:'primary', onClick:()=>go('class') },
+            { id:'new', label:'Spawn a New Brood', kind:'primary', onClick: spawnNewBrood },
             { id:'cont', label:'Resume the Tide', kind:'ghost' },
             { id:'codex', label:'Bestiary of the Deep', kind:'ghost' },
             { id:'meta', label:'Sanctum — Meta Evolution', kind:'ghost' },

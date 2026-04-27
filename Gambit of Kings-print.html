@@ -91,7 +91,6 @@
 <script src="map.js?v=3"></script>
 
 <script type="text/babel" src="screens/MainMenu.jsx"></script>
-<script type="text/babel" src="screens/ClassSelect.jsx"></script>
 <script type="text/babel" src="screens/ObjectiveIcon.jsx"></script>
 <script type="text/babel" src="screens/WorldMap.jsx"></script>
 <script type="text/babel" src="screens/NodePreview.jsx"></script>
@@ -161,15 +160,11 @@
           <MainMenu go={noop}/>
         </Page>
 
-        <Page label="02 · Class Select">
-          <ClassSelect go={noop} setRun={noop}/>
-        </Page>
-
-        <Page label="03 · World Map · The Silted Mouth">
+        <Page label="02 · World Map · The Silted Mouth">
           <WorldMap go={noop} run={run} setRun={noop} openNode={noop}/>
         </Page>
 
-        <Page label="04 · Node Preview (modal)">
+        <Page label="03 · Node Preview (modal)">
           {/* Render the map behind the modal so the backdrop has context */}
           <WorldMap go={noop} run={run} setRun={noop} openNode={noop}/>
           <NodePreview node={node} run={run} onClose={noop} onEnter={noop}/>
