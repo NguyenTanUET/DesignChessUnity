@@ -42,7 +42,7 @@ const ItemTab = ({ run, setRun, sel, arch }) => {
         })}
       </div>
 
-      {section === 'augmentation' && <AugmentationSection run={run} setRun={setRun} sel={sel} arch={arch}/>}
+      {section === 'augmentation' && <AugmentationSection run={run} setRun={setRun}/>}
       {section === 'relic'        && <RelicSection        run={run} setRun={setRun}/>}
       {section === 'quest'        && <QuestSection        run={run}/>}
     </div>
@@ -50,235 +50,317 @@ const ItemTab = ({ run, setRun, sel, arch }) => {
 };
 
 // --- Augmentation Section ---
-const AugmentationSection = ({ run, setRun, sel, arch }) => {
-  const [augPickerSlot, setAugPickerSlot] = React.useState(null);
+// Browse all augmentations (in-hold + grafted). Each aug shows status + equip/unequip action.
+const AugmentationSection = ({ run, setRun }) => {
+  const [equipPickerAug, setEquipPickerAug] = React.useState(null); // augId being fitted
+  const [filter, setFilter] = React.useState('all'); // all | equipped | unequipped
   const augInventory = run.augInventory || [];
-  const augLoadout   = run.augLoadout   || [];
-  const augLoadoutCap = 5;
   const roster = run.roster || [];
 
-  const installAug = (slot, augId) => {
+  // Compute grown slot indices for a follower (same hash logic as UnitInfo)
+  const computeGrownSlots = (follower) => {
+    const slotCount = follower.augSlotCount ?? 5;
+    const seedStr = follower.instanceId + follower.archetype;
+    let h = 0;
+    for (let i=0; i<seedStr.length; i++) h = (h*31 + seedStr.charCodeAt(i)) >>> 0;
+    const indices = [...AUG_SLOTS.keys()];
+    for (let i = indices.length - 1; i > 0; i--) {
+      h = (h * 1103515245 + 12345) >>> 0;
+      const j = h % (i + 1);
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    return new Set(indices.slice(0, slotCount).map(i => AUG_SLOTS[i].id));
+  };
+
+  const installAug = (followerId, slotId, augId) => {
     setRun(r => ({
       ...r,
-      roster: r.roster.map(f => f.instanceId === sel.instanceId
-        ? { ...f, augments: {...f.augments, [slot]: augId} } : f),
+      roster: r.roster.map(f => f.instanceId === followerId
+        ? { ...f, augments: {...f.augments, [slotId]: augId} } : f),
       augInventory: (r.augInventory || []).filter((id, i, arr) => {
         const idx = arr.findIndex(a => a === augId);
         return i !== idx;
       }),
     }));
-    setAugPickerSlot(null);
-  };
-  const removeAug = (slot) => {
-    const current = sel?.augments?.[slot];
-    if (!current) return;
-    setRun(r => ({
-      ...r,
-      roster: r.roster.map(f => f.instanceId === sel.instanceId
-        ? { ...f, augments: {...f.augments, [slot]: null} } : f),
-      augInventory: [...(r.augInventory || []), current],
-    }));
+    setEquipPickerAug(null);
   };
 
+  const removeAug = (followerId, slotId) => {
+    setRun(r => {
+      const f = r.roster.find(x => x.instanceId === followerId);
+      const augId = f?.augments?.[slotId];
+      if (!augId) return r;
+      return {
+        ...r,
+        roster: r.roster.map(x => x.instanceId === followerId
+          ? { ...x, augments: {...x.augments, [slotId]: null} } : x),
+        augInventory: [...(r.augInventory || []), augId],
+      };
+    });
+  };
+
+  // Status of an aug: 'grafted' (with follower+slot info) | 'inventory'
   const augStatus = (augId) => {
     for (const f of roster) {
       for (const [slot, id] of Object.entries(f.augments || {})) {
         if (id === augId) return { state:'grafted', follower:f, slot };
       }
     }
-    if (augLoadout.includes(augId)) return { state:'loadout' };
     return { state:'inventory' };
   };
-  const toggleAugLoadout = (augId) => {
-    const st = augStatus(augId);
-    if (st.state === 'grafted') return;
-    setRun(r => {
-      const load = r.augLoadout || [];
-      if (load.includes(augId)) return { ...r, augLoadout: load.filter(x => x !== augId) };
-      if (load.length >= augLoadoutCap) return r;
-      return { ...r, augLoadout: [...load, augId] };
+
+  // Build list of all augs (inventory + grafted), de-duplicated
+  const allAugIds = React.useMemo(() => {
+    const ids = new Set([
+      ...augInventory,
+      ...roster.flatMap(f => Object.values(f.augments || {}).filter(Boolean)),
+    ]);
+    return [...ids];
+  }, [augInventory, roster]);
+
+  const augs = allAugIds
+    .map(id => ({ id, aug: AUGMENTATIONS.find(a => a.id === id) }))
+    .filter(x => x.aug)
+    .filter(({ id }) => {
+      if (filter === 'all') return true;
+      const st = augStatus(id);
+      return filter === 'equipped' ? st.state === 'grafted' : st.state === 'inventory';
+    });
+
+  // Group augs by slot for display
+  const grouped = AUG_SLOTS.map(slot => ({
+    slot,
+    items: augs.filter(({ aug }) => aug.slot === slot.id),
+  })).filter(g => g.items.length > 0);
+
+  // Eligible followers for fitting an aug: have a grown port matching slot, and that port is empty
+  const eligibleFollowers = (aug) => {
+    return roster.map(f => {
+      const grown = computeGrownSlots(f);
+      const portFree = !f.augments?.[aug.slot];
+      const portGrown = grown.has(aug.slot);
+      return {
+        follower: f,
+        ok: portGrown && portFree,
+        portGrown,
+        portFree,
+      };
     });
   };
 
-  if (!sel) {
-    return <div style={{ padding:40, color:'var(--bone-dim)', textAlign:'center', fontStyle:'italic' }}>Select a follower first.</div>;
-  }
-
-  const augsOfSlot = (slot) => augInventory
-    .map(id => AUGMENTATIONS.find(a => a.id === id))
-    .filter(a => a && a.slot === slot);
+  const totalEquipped = roster.flatMap(f => Object.values(f.augments || {}).filter(Boolean)).length;
+  const totalInHold = augInventory.length;
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'1fr 320px', gap:18 }}>
-      {/* Left: 5 slot grid for selected follower */}
-      <div>
-        <div className="caps" style={{ marginBottom:10 }}>{sel.name} · 5 Graft Ports</div>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:10 }}>
-          {AUG_SLOTS.map(slot => {
-            const installedId = sel.augments?.[slot.id];
-            const aug = installedId ? AUGMENTATIONS.find(a=>a.id===installedId) : null;
+    <div>
+      {/* Header bar with stats and filter */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+        <div>
+          <div className="caps">Augmentation Catalog</div>
+          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9,
+            color:'var(--bio-dim)', letterSpacing:'0.2em', marginTop:3 }}>
+            {totalEquipped} GRAFTED · {totalInHold} IN HOLD
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:4 }}>
+          {[
+            { id:'all',         label:'All' },
+            { id:'equipped',    label:'Equipped' },
+            { id:'unequipped',  label:'In Hold' },
+          ].map(f => {
+            const active = filter === f.id;
             return (
-              <div key={slot.id} style={{
-                background:'linear-gradient(180deg, var(--abyss-2), var(--abyss-1))',
-                border:`1px solid ${aug ? slot.color : 'var(--abyss-3)'}`,
-                padding:'12px 10px', position:'relative', minHeight:150,
-                boxShadow: aug ? `inset 0 0 20px ${slot.color.replace(')', ' / 0.15)')}` : 'none',
-              }}>
-                <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-                  <span style={{ fontSize:16, color:slot.color, fontFamily:'Cinzel, serif' }}>{slot.glyph}</span>
-                  <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:slot.color, letterSpacing:'0.2em', textTransform:'uppercase' }}>
-                    {slot.label}
-                  </div>
-                </div>
-                {aug ? (
-                  <>
-                    <div style={{ fontFamily:'Cinzel, serif', fontSize:12, color:'var(--bone)', letterSpacing:'0.04em', lineHeight:1.2 }}>
-                      {aug.name}
-                    </div>
-                    <div style={{ fontSize:10, color:'var(--bone-dim)', marginTop:3, fontFamily:'JetBrains Mono, monospace' }}>
-                      Tier {aug.tier}
-                    </div>
-                    <div style={{ fontSize:10, color:'var(--bone-dim)', marginTop:6, lineHeight:1.4, fontStyle:'italic' }}>
-                      {aug.effect}
-                    </div>
-                    <button onClick={()=>removeAug(slot.id)}
-                      style={{ position:'absolute', right:4, top:4, border:'none', background:'transparent',
-                        color:'var(--bone-dim)', cursor:'pointer', fontSize:12, padding:'2px 6px' }}
-                      title="Remove">×</button>
-                  </>
-                ) : (
-                  <button onClick={()=>setAugPickerSlot(slot.id)}
-                    style={{
-                      position:'absolute', inset:36, border:`1px dashed var(--abyss-4)`,
-                      background:'transparent', color:'var(--bone-dim)',
-                      fontFamily:'JetBrains Mono, monospace', fontSize:9, letterSpacing:'0.2em',
-                      cursor:'pointer', display:'grid', placeItems:'center',
-                    }}
-                    onMouseEnter={e=>{e.currentTarget.style.borderColor=slot.color; e.currentTarget.style.color=slot.color;}}
-                    onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--abyss-4)'; e.currentTarget.style.color='var(--bone-dim)';}}>
-                    + INSTALL
-                  </button>
-                )}
-              </div>
+              <button key={f.id} onClick={()=>setFilter(f.id)}
+                style={{
+                  padding:'6px 14px', cursor:'pointer',
+                  background: active ? 'linear-gradient(180deg, var(--abyss-3), var(--abyss-2))' : 'var(--abyss-1)',
+                  border:'1px solid', borderColor: active ? 'var(--brass)' : 'var(--abyss-3)',
+                  fontFamily:'JetBrains Mono, monospace', fontSize:10, letterSpacing:'0.2em',
+                  color: active ? 'var(--brass)' : 'var(--bone-dim)',
+                  textTransform:'uppercase',
+                }}>
+                {f.label}
+              </button>
             );
           })}
         </div>
       </div>
 
-      {/* Right: Aug hold (carried + inventory) */}
-      <div>
-        <div className="caps" style={{ marginBottom:8 }}>Augmentation Hold</div>
-        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bio-dim)', letterSpacing:'0.2em', marginBottom:10 }}>
-          {augLoadout.length}/{augLoadoutCap} CARRIED · {augInventory.length} IN HOLD
+      {augs.length === 0 && (
+        <div style={{ padding:'40px 20px', textAlign:'center', border:'1px dashed var(--abyss-4)',
+          color:'var(--bone-dim)', fontStyle:'italic', fontSize:13, fontFamily:'Cormorant Garamond, serif' }}>
+          {filter === 'equipped' ? 'No augmentations are currently grafted.' :
+           filter === 'unequipped' ? 'The hold is empty. Visit the Trader for fresh flesh.' :
+           'No augmentations yet. The Trader may have flesh to sell.'}
         </div>
-        {(() => {
-          const allIds = new Set([
-            ...augInventory, ...augLoadout,
-            ...roster.flatMap(f => Object.values(f.augments || {}).filter(Boolean)),
-          ]);
-          const list = [...allIds]
-            .map(id => ({ id, aug: AUGMENTATIONS.find(a=>a.id===id) }))
-            .filter(x => x.aug);
-          if (list.length === 0) {
-            return (
-              <div style={{ padding:'14px', textAlign:'center', border:'1px dashed var(--abyss-4)',
-                color:'var(--bone-dim)', fontStyle:'italic', fontSize:11, fontFamily:'Cormorant Garamond, serif' }}>
-                No grafts yet. The Trader may have flesh to sell.
-              </div>
-            );
-          }
-          return (
-            <div style={{ display:'flex', flexDirection:'column', gap:5, maxHeight:480, overflowY:'auto' }}>
-              {list.map(({ id, aug }) => {
-                const slot = AUG_SLOTS.find(s => s.id === aug.slot);
+      )}
+
+      {/* Grouped by slot */}
+      <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+        {grouped.map(({ slot, items }) => (
+          <div key={slot.id}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8,
+              paddingBottom:6, borderBottom:`1px solid ${slot.color.replace(')', ' / 0.3)')}` }}>
+              <span style={{ fontFamily:'Cinzel, serif', fontSize:18, color:slot.color,
+                textShadow:`0 0 10px ${slot.color}` }}>{slot.glyph}</span>
+              <span style={{ fontFamily:'Cinzel, serif', fontSize:13, color:slot.color,
+                letterSpacing:'0.25em', textTransform:'uppercase', fontWeight:600 }}>
+                {slot.label}
+              </span>
+              <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9,
+                color:'var(--bone-dim)', letterSpacing:'0.2em' }}>
+                {items.length} GRAFT{items.length === 1 ? '' : 'S'}
+              </span>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:10 }}>
+              {items.map(({ id, aug }) => {
                 const st = augStatus(id);
                 const isGrafted = st.state === 'grafted';
-                const isCarried = st.state === 'loadout';
-                const borderColor = isGrafted ? slot.color : isCarried ? 'var(--brass)' : 'var(--abyss-3)';
-                const bg = isGrafted ? `linear-gradient(90deg, ${slot.color.replace(')',' / 0.15)')}, var(--abyss-1))`
-                  : isCarried ? 'linear-gradient(90deg, var(--abyss-3), var(--abyss-2))'
-                  : 'var(--abyss-1)';
                 return (
-                  <div key={id} onClick={()=>toggleAugLoadout(id)}
-                    title={isGrafted ? `Grafted to ${st.follower.name}` : isCarried ? 'Click to uncarry' : 'Click to carry'}
-                    style={{
-                      padding:'8px 10px', cursor: isGrafted ? 'default' : 'pointer',
-                      background:bg, border:'1px solid', borderColor,
-                      display:'flex', gap:9, alignItems:'flex-start',
-                      opacity: isGrafted ? 0.85 : 1,
-                    }}>
-                    <div style={{ fontSize:18, fontFamily:'Cinzel, serif', color:slot.color,
-                      textShadow:(isGrafted||isCarried)?`0 0 8px ${slot.color}`:'none', lineHeight:1, paddingTop:2 }}>
+                  <div key={id} style={{
+                    padding:'12px 14px',
+                    background: isGrafted
+                      ? `linear-gradient(90deg, ${slot.color.replace(')',' / 0.12)')}, var(--abyss-1))`
+                      : 'var(--abyss-1)',
+                    border:'1px solid', borderColor: isGrafted ? slot.color : 'var(--abyss-3)',
+                    display:'flex', gap:12, alignItems:'flex-start',
+                  }}>
+                    <div style={{ fontSize:24, fontFamily:'Cinzel, serif', color:slot.color,
+                      textShadow:isGrafted?`0 0 10px ${slot.color}`:'none', flexShrink:0, paddingTop:2 }}>
                       {slot.glyph}
                     </div>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ display:'flex', alignItems:'baseline', gap:6, justifyContent:'space-between' }}>
-                        <div style={{ fontFamily:'Cinzel, serif', fontSize:11.5, color:'var(--bone)',
-                          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{aug.name}</div>
-                        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, color:slot.color, letterSpacing:'0.15em' }}>T{aug.tier}</div>
+                        <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone)',
+                          letterSpacing:'0.04em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                          {aug.name}
+                        </div>
+                        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9,
+                          color:slot.color, letterSpacing:'0.18em', flexShrink:0 }}>T{aug.tier}</div>
                       </div>
-                      <div style={{ fontSize:9.5, color:'var(--bone-dim)', marginTop:2, lineHeight:1.35, fontStyle:'italic' }}>
+                      <div style={{ fontSize:11, color:'var(--bone-dim)', marginTop:4, lineHeight:1.4,
+                        fontStyle:'italic', fontFamily:'Cormorant Garamond, serif' }}>
                         {aug.effect}
                       </div>
-                      <div style={{ marginTop:4, fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.2em' }}>
-                        {isGrafted && <span style={{ color:slot.color }}>⊕ GRAFTED · {st.follower.name.toUpperCase()}</span>}
-                        {isCarried && <span style={{ color:'var(--brass)' }}>◆ CARRIED</span>}
-                        {!isGrafted && !isCarried && <span style={{ color:'var(--bone-dim)' }}>— IN HOLD</span>}
+                      <div style={{ marginTop:8, display:'flex', alignItems:'center',
+                        justifyContent:'space-between', gap:8 }}>
+                        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9,
+                          letterSpacing:'0.2em' }}>
+                          {isGrafted
+                            ? <span style={{ color:slot.color }}>⊕ GRAFTED · {st.follower.name.toUpperCase()}</span>
+                            : <span style={{ color:'var(--bone-dim)' }}>— IN HOLD</span>}
+                        </div>
+                        {isGrafted ? (
+                          <button onClick={()=>removeAug(st.follower.instanceId, st.slot)}
+                            style={{
+                              padding:'5px 12px', cursor:'pointer',
+                              background:'var(--abyss-2)',
+                              border:'1px solid oklch(0.45 0.13 25 / 0.6)',
+                              color:'oklch(0.78 0.13 25)',
+                              fontFamily:'JetBrains Mono, monospace', fontSize:9.5, letterSpacing:'0.22em',
+                              textTransform:'uppercase',
+                            }}
+                            onMouseEnter={e=>{ e.currentTarget.style.background='oklch(0.22 0.06 25 / 0.4)'; e.currentTarget.style.borderColor='oklch(0.65 0.16 25)'; }}
+                            onMouseLeave={e=>{ e.currentTarget.style.background='var(--abyss-2)'; e.currentTarget.style.borderColor='oklch(0.45 0.13 25 / 0.6)'; }}>
+                            × Unequip
+                          </button>
+                        ) : (
+                          <button onClick={()=>setEquipPickerAug(id)}
+                            style={{
+                              padding:'5px 12px', cursor:'pointer',
+                              background:`linear-gradient(180deg, ${slot.color.replace(')',' / 0.18)')}, var(--abyss-2))`,
+                              border:`1px solid ${slot.color.replace(')',' / 0.6)')}`,
+                              color:slot.color,
+                              fontFamily:'JetBrains Mono, monospace', fontSize:9.5, letterSpacing:'0.22em',
+                              textTransform:'uppercase',
+                            }}
+                            onMouseEnter={e=>{ e.currentTarget.style.borderColor=slot.color; e.currentTarget.style.boxShadow=`0 0 10px ${slot.color.replace(')',' / 0.4)')}`; }}
+                            onMouseLeave={e=>{ e.currentTarget.style.borderColor=slot.color.replace(')',' / 0.6)'); e.currentTarget.style.boxShadow='none'; }}>
+                            ⊕ Equip ▸
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-          );
-        })()}
+          </div>
+        ))}
       </div>
 
-      {/* Picker modal */}
-      {augPickerSlot && (
-        <div className="modal-backdrop" onClick={()=>setAugPickerSlot(null)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            {(() => {
-              const slot = AUG_SLOTS.find(s => s.id === augPickerSlot);
-              const available = augsOfSlot(augPickerSlot);
-              return (
-                <>
-                  <div className="eyebrow" style={{ color:slot.color }}>{slot.glyph} · {slot.label} Port</div>
-                  <h2 style={{ margin:'6px 0 4px', fontSize:24, fontFamily:'Cinzel, serif', color:'var(--bone)' }}>Select Augmentation</h2>
-                  <div style={{ fontStyle:'italic', color:'var(--bone-dim)', fontSize:13, marginBottom:16 }}>{slot.desc}</div>
-                  {available.length === 0 ? (
-                    <div style={{ padding:'24px', textAlign:'center', border:'1px dashed var(--abyss-4)',
-                      color:'var(--bone-dim)', fontSize:13, fontStyle:'italic' }}>
-                      No {slot.label.toLowerCase()} augmentations in inventory.
-                    </div>
-                  ) : (
-                    <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:320, overflowY:'auto' }}>
-                      {available.map(a => (
-                        <div key={a.id} onClick={()=>installAug(slot.id, a.id)}
-                          style={{ padding:'12px 14px', cursor:'pointer',
-                            background:'var(--abyss-2)', border:'1px solid var(--abyss-3)',
-                            display:'flex', gap:10, alignItems:'center' }}
-                          onMouseEnter={e=>e.currentTarget.style.borderColor=slot.color}
-                          onMouseLeave={e=>e.currentTarget.style.borderColor='var(--abyss-3)'}>
-                          <div style={{ fontSize:18, color:slot.color }}>{slot.glyph}</div>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone)' }}>{a.name}</div>
-                            <div style={{ fontSize:10, color:'var(--bone-dim)', marginTop:3 }}>Tier {a.tier} · {a.effect}</div>
-                          </div>
-                          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--bio)' }}>INSTALL ▸</div>
+      {/* Equip picker modal: pick a follower to graft this aug onto */}
+      {equipPickerAug && (() => {
+        const aug = AUGMENTATIONS.find(a => a.id === equipPickerAug);
+        if (!aug) return null;
+        const slot = AUG_SLOTS.find(s => s.id === aug.slot);
+        const candidates = eligibleFollowers(aug);
+        return (
+          <div className="modal-backdrop" onClick={()=>setEquipPickerAug(null)}>
+            <div className="modal" onClick={e=>e.stopPropagation()}>
+              <div className="eyebrow" style={{ color:slot.color }}>{slot.glyph} · {slot.label} Graft</div>
+              <h2 style={{ margin:'6px 0 4px', fontSize:24, fontFamily:'Cinzel, serif', color:'var(--bone)' }}>
+                Fit {aug.name}
+              </h2>
+              <div style={{ fontStyle:'italic', color:'var(--bone-dim)', fontSize:13, marginBottom:6,
+                fontFamily:'Cormorant Garamond, serif' }}>
+                {aug.effect}
+              </div>
+              <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bio-dim)',
+                letterSpacing:'0.2em', marginBottom:14 }}>
+                ‣ SELECT A SPECIMEN WITH AN OPEN {slot.label.toUpperCase()} PORT
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:400, overflowY:'auto' }}>
+                {candidates.map(({ follower, ok, portGrown, portFree }) => {
+                  const a = FOLLOWER_ARCHETYPES[follower.archetype];
+                  const reason = !portGrown ? `— No ${slot.label.toLowerCase()} port grown`
+                    : !portFree ? `— ${slot.label} port already filled`
+                    : null;
+                  return (
+                    <div key={follower.instanceId}
+                      onClick={()=>{ if (ok) installAug(follower.instanceId, slot.id, aug.id); }}
+                      style={{
+                        padding:'12px 14px', cursor: ok ? 'pointer' : 'not-allowed',
+                        background: ok ? 'var(--abyss-2)' : 'var(--abyss-1)',
+                        border:'1px solid', borderColor: ok ? 'var(--abyss-3)' : 'var(--abyss-4)',
+                        opacity: ok ? 1 : 0.45,
+                        display:'flex', gap:12, alignItems:'center', transition:'all 0.15s',
+                      }}
+                      onMouseEnter={e=>{ if (ok) { e.currentTarget.style.borderColor=slot.color; e.currentTarget.style.background=`linear-gradient(90deg, ${slot.color.replace(')',' / 0.12)')}, var(--abyss-2))`; } }}
+                      onMouseLeave={e=>{ if (ok) { e.currentTarget.style.borderColor='var(--abyss-3)'; e.currentTarget.style.background='var(--abyss-2)'; } }}>
+                      <div style={{ fontSize:24, fontFamily:'Cinzel, serif', color:a.color,
+                        textShadow: ok ? `0 0 10px ${a.color}` : 'none', width:32, textAlign:'center' }}>{a.glyph}</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone)',
+                          letterSpacing:'0.04em' }}>{follower.name}</div>
+                        <div style={{ display:'flex', gap:8, marginTop:3,
+                          fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+                          letterSpacing:'0.15em' }}>
+                          <span>{a.role.toUpperCase()}</span>
+                          <span>EVO·{follower.evoTier}</span>
+                          <span>{Object.values(follower.augments||{}).filter(Boolean).length}/{follower.augSlotCount ?? 5} PORTS</span>
                         </div>
-                      ))}
+                      </div>
+                      <div style={{ flexShrink:0, fontFamily:'JetBrains Mono, monospace', fontSize:9.5,
+                        letterSpacing:'0.2em', textAlign:'right' }}>
+                        {ok ? <span style={{ color:slot.color }}>FIT ▸</span>
+                            : <span style={{ color:'var(--bone-dim)', fontStyle:'italic',
+                                fontFamily:'Cormorant Garamond, serif', fontSize:11 }}>{reason}</span>}
+                      </div>
                     </div>
-                  )}
-                  <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16 }}>
-                    <button className="btn ghost sm" onClick={()=>setAugPickerSlot(null)}>Cancel</button>
-                  </div>
-                </>
-              );
-            })()}
+                  );
+                })}
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:16 }}>
+                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)', letterSpacing:'0.2em' }}>
+                  ‣ {candidates.filter(c => c.ok).length} VIABLE SPECIMEN{candidates.filter(c => c.ok).length === 1 ? '' : 'S'}
+                </div>
+                <button className="btn ghost sm" onClick={()=>setEquipPickerAug(null)}>Cancel</button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-// Tab 2 — Evolution: 3-tier linear DNA tree per follower
+// Tab — Evolution: 3-tier linear DNA tree per follower
 const EvolutionTab = ({ run, setRun, selId }) => {
   const roster = run.roster || [];
   const sel = roster.find(f => f.instanceId === selId) || roster[0];
@@ -6,141 +6,144 @@ const EvolutionTab = ({ run, setRun, selId }) => {
   const chain = sel ? EVOLUTION[sel.archetype] : [];
   const dna = run.res?.dna || 0;
 
-  if (!sel || !arch) return null;
+  if (!sel || !arch) {
+    return (
+      <div style={{ padding:'80px 40px', textAlign:'center', color:'var(--bone-dim)', fontStyle:'italic' }}>
+        Select a follower from the roster to inspect the DNA chain.
+      </div>
+    );
+  }
 
-  const canAfford = (cost) => cost && (cost.dna || 0) <= dna;
-  const evolve = (target) => {
-    if (target !== sel.evoTier + 1) return;
-    const stage = chain[target];
-    if (!stage || !canAfford(stage.cost)) return;
+  const evolveTo = (tier) => {
+    if (tier <= sel.evoTier) return;
+    if (tier !== sel.evoTier + 1) return; // linear only
+    const node = chain[tier];
+    const cost = node.cost?.dna || 0;
+    if (dna < cost) return;
     setRun(r => ({
       ...r,
-      res: { ...r.res, dna: (r.res.dna||0) - (stage.cost.dna||0) },
-      roster: r.roster.map(f => f.instanceId === sel.instanceId ? { ...f, evoTier: target } : f),
+      res: { ...r.res, dna: (r.res.dna||0) - cost },
+      roster: r.roster.map(f => f.instanceId === sel.instanceId
+        ? { ...f, evoTier: tier, name: node.name }
+        : f),
     }));
   };
 
   return (
-    <div style={{ position:'relative', minHeight:'100%', overflow:'hidden',
-      background:`
-        radial-gradient(ellipse at 50% 30%, oklch(0.22 0.1 150 / 0.25), transparent 60%),
-        radial-gradient(ellipse at 50% 100%, oklch(0.1 0.04 280 / 0.4), transparent 60%),
-        linear-gradient(180deg, var(--abyss-1), var(--abyss-0))` }}>
+    <div style={{ position:'relative', padding:'28px 36px',
+      display:'flex', flexDirection:'column', alignItems:'center' }}>
+      <div className="eyebrow" style={{ color: arch.color }}>{arch.role} · Linear Evolution</div>
+      <h2 style={{ margin:'4px 0 28px', fontFamily:'Cinzel, serif', fontSize:28, color:'var(--bone)', letterSpacing:'0.05em' }}>
+        {sel.name}
+      </h2>
 
-      {/* DNA helix backdrop */}
-      <svg viewBox="0 0 900 720" preserveAspectRatio="xMidYMid slice"
-        style={{ position:'absolute', inset:0, width:'100%', height:'100%', opacity:0.4 }}>
-        <rect x="340" y="60" width="220" height="600" fill="oklch(0.08 0.03 210)" stroke="oklch(0.4 0.06 75)" strokeWidth="2"/>
-        {[...Array(40)].map((_,i)=>{
-          const t = i/39;
-          const x1 = 380 + Math.sin(t*Math.PI*6)*60;
-          const x2 = 520 - Math.sin(t*Math.PI*6)*60;
-          const y = 80 + t*560;
+      {/* DNA resource bar */}
+      <div style={{ display:'flex', gap:14, alignItems:'center', marginBottom:32,
+        padding:'10px 22px', border:'1px solid var(--abyss-4)', background:'rgba(0,0,0,0.45)' }}>
+        <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, letterSpacing:'0.3em',
+          color:'var(--bio-dim)', textTransform:'uppercase' }}>DNA Reservoir</span>
+        <span style={{ fontFamily:'Cinzel, serif', fontSize:22, color:'var(--bio)',
+          textShadow:'0 0 12px var(--bio)' }}>✧ {dna}</span>
+      </div>
+
+      {/* Linear chain */}
+      <div style={{ display:'flex', alignItems:'stretch', gap:0, position:'relative' }}>
+        {chain.map((node, i) => {
+          const isCurrent = i === sel.evoTier;
+          const isPast = i < sel.evoTier;
+          const isNext = i === sel.evoTier + 1;
+          const cost = node.cost?.dna || 0;
+          const canAfford = dna >= cost;
+          const locked = i > sel.evoTier + 1;
+
           return (
-            <g key={i}>
-              <circle cx={x1} cy={y} r="2.5" fill="oklch(0.72 0.14 150)" opacity="0.8"/>
-              <circle cx={x2} cy={y} r="2.5" fill="oklch(0.72 0.14 150)" opacity="0.8"/>
-              <line x1={x1} y1={y} x2={x2} y2={y} stroke="oklch(0.5 0.1 150)" strokeWidth="0.5" opacity="0.4"/>
-            </g>
-          );
-        })}
-      </svg>
+            <React.Fragment key={i}>
+              {/* node card */}
+              <div style={{
+                width: 200, padding:'18px 16px',
+                background: isCurrent
+                  ? `linear-gradient(180deg, oklch(0.2 0.05 200), oklch(0.12 0.03 215))`
+                  : isPast ? 'rgba(0,0,0,0.35)' : 'var(--abyss-1)',
+                border:'1px solid',
+                borderColor: isCurrent ? arch.color : isPast ? 'var(--bio-dim)' : 'var(--abyss-3)',
+                boxShadow: isCurrent ? `0 0 24px ${arch.color}55, inset 0 0 30px rgba(0,0,0,0.5)` : 'none',
+                opacity: locked ? 0.45 : 1,
+                position:'relative',
+              }}>
+                {/* tier badge */}
+                <div style={{ position:'absolute', top:-10, left:'50%', transform:'translateX(-50%)',
+                  background:'var(--abyss-0)', padding:'2px 10px',
+                  border:'1px solid var(--brass-deep)',
+                  fontFamily:'JetBrains Mono, monospace', fontSize:9, letterSpacing:'0.25em',
+                  color:isCurrent ? 'var(--brass)' : 'var(--bone-dim)' }}>
+                  TIER {node.tier}
+                </div>
 
-      <div style={{ position:'relative', padding:'28px 36px',
-        display:'flex', flexDirection:'column', alignItems:'center' }}>
-        <div className="eyebrow" style={{ color: arch.color }}>{arch.role} · Linear Evolution</div>
-        <h2 style={{ margin:'4px 0 28px', fontFamily:'Cinzel, serif', fontSize:28, color:'var(--bone)', letterSpacing:'0.05em' }}>
-          {sel.name}
-        </h2>
+                {/* glyph portrait */}
+                <div style={{ textAlign:'center', fontSize:54, fontFamily:'Cinzel, serif',
+                  color: isPast || isCurrent ? arch.color : 'var(--abyss-4)',
+                  textShadow: isCurrent ? `0 0 16px ${arch.color}` : 'none',
+                  marginBottom: 8, marginTop: 4 }}>
+                  {arch.glyph}
+                </div>
 
-        <div style={{ display:'flex', alignItems:'stretch', gap:0, width:'100%', maxWidth:820 }}>
-          {chain.map((stage, i) => {
-            const isCurrent = i === sel.evoTier;
-            const isPast = i < sel.evoTier;
-            const isNext = i === sel.evoTier + 1;
-            const isLocked = i > sel.evoTier + 1;
-            const affordable = isNext && canAfford(stage.cost);
-            return (
-              <React.Fragment key={i}>
-                <div style={{
-                  flex:1, position:'relative', padding:'16px 14px',
-                  background: isCurrent ? `linear-gradient(180deg, var(--abyss-3), var(--abyss-2))` : 'var(--abyss-1)',
-                  border:'1px solid',
-                  borderColor: isCurrent ? arch.color
-                    : isPast ? 'var(--brass-deep)'
-                    : affordable ? 'var(--bio)'
-                    : 'var(--abyss-3)',
-                  opacity: isLocked ? 0.5 : 1,
-                  boxShadow: isCurrent ? `0 0 30px ${arch.color}33, inset 0 0 20px rgba(0,0,0,0.4)` : 'none',
-                  minHeight:200,
-                }}>
-                  <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, letterSpacing:'0.25em',
-                    color: isCurrent ? arch.color : isPast ? 'var(--brass-dim)' : 'var(--bone-dim)' }}>
-                    TIER {i}{isCurrent && ' · CURRENT'}{isPast && ' · COMPLETE'}
-                  </div>
-                  <div style={{ fontSize:42, textAlign:'center', margin:'12px 0 6px',
-                    fontFamily:'Cinzel, serif',
-                    color: isLocked ? 'var(--bone-dim)' : arch.color,
-                    textShadow: isCurrent ? `0 0 20px ${arch.color}` : 'none',
-                    opacity: isLocked ? 0.4 : 1,
-                  }}>{arch.glyph}{i>0 && <sup style={{ fontSize:13, color:'var(--brass)' }}>{'+'.repeat(i)}</sup>}</div>
-                  <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone)', textAlign:'center',
-                    letterSpacing:'0.04em', marginBottom:6 }}>
-                    {stage.name}
-                  </div>
-                  <div style={{ fontSize:10.5, color:'var(--bone-dim)', textAlign:'center',
-                    lineHeight:1.4, fontStyle:'italic', minHeight:42 }}>
-                    {stage.effect}
-                  </div>
+                <div style={{ fontFamily:'Cinzel, serif', fontSize:14, color:'var(--bone)',
+                  textAlign:'center', letterSpacing:'0.04em', marginBottom:8 }}>
+                  {node.name}
+                </div>
 
-                  {isNext && stage.cost && (
-                    <div style={{ marginTop:12, textAlign:'center' }}>
-                      <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--bio-dim)',
-                        letterSpacing:'0.15em', marginBottom:6 }}>
-                        COST · <span style={{ color: affordable ? 'var(--bone)' : 'var(--coral)' }}>
-                          ✧ {stage.cost.dna} DNA
-                        </span>
-                      </div>
-                      <button disabled={!affordable} onClick={()=>evolve(i)}
-                        className={`btn sm ${affordable?'primary':''}`}
-                        style={{ width:'100%', justifyContent:'center' }}>
-                        {affordable ? '✧ EVOLVE' : 'Insufficient DNA'}
-                      </button>
-                    </div>
+                <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12, fontStyle:'italic',
+                  color:'var(--bone-dim)', textAlign:'center', lineHeight:1.4, minHeight:48 }}>
+                  {node.effect}
+                </div>
+
+                {/* status / action */}
+                <div style={{ marginTop:14, textAlign:'center' }}>
+                  {isCurrent && (
+                    <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, letterSpacing:'0.25em',
+                      color:'var(--brass)', textTransform:'uppercase' }}>◆ Current Form</div>
                   )}
                   {isPast && (
-                    <div style={{ textAlign:'center', marginTop:12,
-                      fontFamily:'JetBrains Mono, monospace', fontSize:10,
-                      color:'var(--brass-dim)', letterSpacing:'0.15em' }}>
-                      ✓ ASCENDED
-                    </div>
+                    <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, letterSpacing:'0.25em',
+                      color:'var(--bio-dim)', textTransform:'uppercase' }}>◇ Shed</div>
                   )}
-                  {isLocked && (
-                    <div style={{ textAlign:'center', marginTop:12,
-                      fontFamily:'JetBrains Mono, monospace', fontSize:10,
-                      color:'var(--bone-dim)', letterSpacing:'0.15em' }}>
-                      ⚿ SEALED
-                    </div>
+                  {isNext && (
+                    <button className={`btn ${canAfford?'primary':''}`}
+                      disabled={!canAfford}
+                      onClick={()=>evolveTo(i)}
+                      style={{ padding:'8px 14px', fontSize:11, opacity: canAfford ? 1 : 0.45 }}>
+                      {canAfford ? `✧ EVOLVE · ${cost} DNA` : `✧ ${cost} DNA`}
+                    </button>
+                  )}
+                  {locked && (
+                    <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, letterSpacing:'0.25em',
+                      color:'var(--bone-dim)', textTransform:'uppercase' }}>⊘ Sealed</div>
                   )}
                 </div>
-                {i < chain.length - 1 && (
-                  <div style={{ width:24, alignSelf:'center', height:1,
-                    background: i < sel.evoTier
-                      ? `linear-gradient(90deg, ${arch.color}, var(--brass-deep))`
-                      : 'var(--abyss-3)' }}/>
-                )}
-              </React.Fragment>
-            );
-          })}
-        </div>
+              </div>
 
-        <div style={{ marginTop:28, maxWidth:640, textAlign:'center',
-          padding:'12px 18px', background:'rgba(0,0,0,0.4)', border:'1px solid var(--abyss-3)' }}>
-          <div className="eyebrow" style={{ color:'var(--bio-dim)' }}>‣ Chamber Sermon</div>
-          <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:14, fontStyle:'italic',
-            color:'var(--bone-dim)', marginTop:4, lineHeight:1.5 }}>
-            &ldquo;Each evolution is a covenant. The flesh remembers what thou hast paid it.&rdquo;
-          </div>
+              {/* connector */}
+              {i < chain.length - 1 && (
+                <div style={{ width:42, position:'relative', alignSelf:'center', height:2 }}>
+                  <div style={{ position:'absolute', inset:0,
+                    background: i < sel.evoTier
+                      ? `linear-gradient(90deg, ${arch.color}, ${arch.color})`
+                      : 'var(--abyss-4)',
+                    boxShadow: i < sel.evoTier ? `0 0 8px ${arch.color}` : 'none' }}/>
+                </div>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop:32, maxWidth:680, textAlign:'center' }}>
+        <div className="divider fancy" style={{ width:280, margin:'0 auto 12px' }}>
+          <span>✦ ✦ ✦</span>
+        </div>
+        <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:14, fontStyle:'italic',
+          color:'var(--bone-dim)', marginTop:4, lineHeight:1.5 }}>
+          &ldquo;Each evolution is a covenant. The flesh remembers what thou hast paid it.&rdquo;
         </div>
       </div>
     </div>
