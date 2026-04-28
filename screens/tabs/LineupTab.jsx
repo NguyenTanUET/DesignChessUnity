@@ -22,13 +22,13 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
   const current = lineupsForWidth[selIdx] || null;
   const board = current?.board || {};
 
-  // Each formation: real board = w × fullH; player places on bottom 2 rows only.
-  // Display: w × (fullH/2) — own half-court.
+  // Each formation has a square footprint (w × w) and is rendered at its own size.
+  // Player places on the back 2 ranks only; remaining rows are hatched as out-of-bounds.
   const formations = [
-    { w:4,  fullH:6,  label:'W4',  title:'Skirmish',  cap:8,  desc:'Tight 4×6 court. Place across 2 ranks of 4.',   color:'oklch(0.7 0.12 35)' },
-    { w:6,  fullH:8,  label:'W6',  title:'Vanguard',  cap:12, desc:'Six-wide 6×8 board. Standard reef-tide.',         color:'oklch(0.7 0.13 195)' },
-    { w:8,  fullH:10, label:'W8',  title:'Standard',  cap:16, desc:'Classical 8×10 court. Even rhythms.',             color:'var(--brass)' },
-    { w:10, fullH:12, label:'W10', title:'Tide-Wall', cap:20, desc:'Wide 10×12 siege. Maximum brood deployed.',       color:'oklch(0.65 0.15 290)' },
+    { w:4,  fullH:4,  label:'W4',  title:'Skirmish',  cap:8,  desc:'Tight 4×4 grid. Two ranks of 4 deploy.',     color:'oklch(0.7 0.12 35)' },
+    { w:6,  fullH:6,  label:'W6',  title:'Vanguard',  cap:12, desc:'Six-wide 6×6 grid. Two ranks of 6 deploy.',  color:'oklch(0.7 0.13 195)' },
+    { w:8,  fullH:8,  label:'W8',  title:'Standard',  cap:16, desc:'Classical 8×8 grid. Two ranks of 8 deploy.', color:'var(--brass)' },
+    { w:10, fullH:10, label:'W10', title:'Tide-Wall', cap:20, desc:'Wide 10×10 siege. Two ranks of 10 deploy.',  color:'oklch(0.65 0.15 290)' },
   ];
   const active = formations.find(f => f.w === width);
 
@@ -392,11 +392,13 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
   );
 };
 
-// --- Board Grid: shows player's half-court (W × H/2). Top 2 rows are placeable (back rank + front rank). ---
+// --- Board Grid: renders just the two placement ranks (back + front) for the
+// active formation — width × 2 cells. There are no hatched / out-of-bounds rows,
+// since the player can only deploy onto these two ranks anyway.
 const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragId, color }) => {
-  const halfRows = fullH / 2;            // visible rows
-  const backRow  = 0;                    // top row — major pieces
-  const frontRow = 1;                    // second row — pawns / larvae
+  const rows = 2;                                      // back rank + front rank only
+  const backRow  = 0;
+  const frontRow = 1;
   const cell = width <= 4 ? 72 : width <= 6 ? 60 : width <= 8 ? 50 : 42;
   const lookup = id => roster.find(f => f.instanceId === id);
 
@@ -409,10 +411,11 @@ const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragI
     setDragId(null);
   };
 
-  const squares = [];
-  for (let r=0; r<halfRows; r++) {
+  const cells = [];
+  for (let r=0; r<rows; r++) {
     for (let c=0; c<width; c++) {
-      squares.push({ r, c, id:`r${r}c${c}` });
+      const isPlaceable = r === backRow || r === frontRow;
+      cells.push({ r, c, isPlaceable, id:`r${r}c${c}` });
     }
   }
 
@@ -426,22 +429,24 @@ const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragI
       </div>
 
       <div style={{
-        display:'grid',
+        display:'inline-grid',
         gridTemplateColumns:`repeat(${width}, ${cell}px)`,
-        gridTemplateRows:`repeat(${halfRows}, ${cell}px)`,
+        gridTemplateRows:`repeat(${rows}, ${cell}px)`,
         border:`1px solid ${color}`,
         boxShadow:`0 12px 40px rgba(0,0,0,0.7), inset 0 0 30px rgba(0,0,0,0.6), 0 0 30px ${color}33`,
         background:'var(--abyss-1)',
         position:'relative',
       }}>
-        {squares.map(sq => {
+        {cells.map(sq => {
           const dark = (sq.r + sq.c) % 2 === 1;
-          const isPlaceable = sq.r === backRow || sq.r === frontRow;
-          const isNoMans = !isPlaceable;
-          const occId = lineup[sq.id];
-          const occ = (occId && isPlaceable) ? lookup(occId) : null;
+          const isPlaceable = sq.isPlaceable;
+          const isOutOfBounds = !isPlaceable;
+          const occId = isPlaceable ? lineup[sq.id] : null;
+          const occ = occId ? lookup(occId) : null;
           const a = occ ? FOLLOWER_ARCHETYPES[occ.archetype] : null;
           const rowLabel = sq.r === backRow ? 'BACK' : sq.r === frontRow ? 'FRONT' : '';
+          const isFirstCol = sq.c === 0;
+          const isMidLineAnchor = isPlaceable && sq.r === frontRow && sq.c === 0;
 
           return (
             <div key={sq.id}
@@ -449,23 +454,23 @@ const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragI
               onDrop={handleDrop(sq.id, isPlaceable)}
               style={{
                 width:cell, height:cell, position:'relative',
-                background: isNoMans
+                background: isOutOfBounds
                   ? `repeating-linear-gradient(45deg,
                       oklch(0.09 0.015 220) 0 6px,
                       oklch(0.12 0.02 220) 6px 12px)`
                   : (dark ? 'oklch(0.14 0.02 220)' : 'oklch(0.22 0.03 220)'),
                 display:'grid', placeItems:'center',
                 borderRight: sq.c===width-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
-                borderBottom: sq.r===halfRows-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
-                opacity: isNoMans ? 0.4 : 1,
+                borderBottom: sq.r===rows-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
+                opacity: isOutOfBounds ? 0.4 : 1,
                 transition:'background 0.15s',
                 cursor: isPlaceable && !occ ? 'default' : (occ ? 'pointer' : 'not-allowed'),
               }}
               onClick={()=> occ && onSetSquare(sq.id, null)}
-              title={occ ? `${occ.name} — click to clear` : (isPlaceable ? `${rowLabel} rank · row ${sq.r+1}` : 'Mid-field — not deployable')}
+              title={occ ? `${occ.name} — click to clear` : (isPlaceable ? `${rowLabel} rank · column ${sq.c+1}` : 'Out of bounds — not deployable')}
             >
-              {/* Rank label (left edge) */}
-              {sq.c === 0 && rowLabel && (
+              {/* Rank label at the leftmost column of placement rows */}
+              {isFirstCol && isPlaceable && rowLabel && (
                 <div style={{ position:'absolute', left:-30, top:'50%', transform:'translateY(-50%)',
                   fontFamily:'JetBrains Mono, monospace', fontSize:8, color:'var(--bone-dim)',
                   letterSpacing:'0.2em' }}>
@@ -473,15 +478,15 @@ const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragI
                 </div>
               )}
 
-              {/* Mid-line marker between placeable and no-mans */}
-              {sq.r === frontRow && sq.c === 0 && (
-                <div style={{ position:'absolute', bottom:-1, left:0, right:0, height:1,
+              {/* Mid-line marker below the front rank, spanning the placement width */}
+              {isMidLineAnchor && (
+                <div style={{ position:'absolute', bottom:-1, left:0, height:1,
                   background:`linear-gradient(90deg, transparent, ${color}, transparent)`,
                   width:`${width*cell}px`, pointerEvents:'none' }}/>
               )}
 
-              {/* No-mans cell glyph */}
-              {isNoMans && (
+              {/* Out-of-bounds cell glyph */}
+              {isOutOfBounds && (
                 <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10,
                   color:'oklch(0.4 0.05 220)', opacity:0.5 }}>·</div>
               )}
@@ -522,11 +527,11 @@ const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragI
         })}
       </div>
 
-      {/* Footer — court size hint */}
+      {/* Footer — formation hint */}
       <div style={{ marginTop:6, textAlign:'center',
         fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
         letterSpacing:'0.25em' }}>
-        ◈ Showing your half · Full court {width}×{fullH} · Place on the back two ranks ◈
+        ◈ {width}×{fullH} formation · Deploy 2 ranks of {width} ◈
       </div>
     </div>
   );
