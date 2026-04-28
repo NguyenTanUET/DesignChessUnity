@@ -123,11 +123,10 @@ const MainMenu = ({ go, setRun }) => {
 
         <div style={{ display:'flex', flexDirection:'column', gap:10, width:340, margin:'0 auto' }}>
           {[
-            { id:'new', label:'Spawn a New Brood', kind:'primary', onClick: spawnNewBrood },
-            { id:'cont', label:'Resume the Tide', kind:'ghost' },
-            { id:'codex', label:'Bestiary of the Deep', kind:'ghost' },
-            { id:'meta', label:'Sanctum — Meta Evolution', kind:'ghost' },
-            { id:'opts', label:'Rites &amp; Settings', kind:'ghost' },
+            { id:'new', label:'Start Game', kind:'primary', onClick: spawnNewBrood },
+            { id:'opts', label:'Settings', kind:'ghost' },
+            { id:'credit', label:'Credits', kind:'ghost' },
+            { id:'exit', label:'Exit', kind:'ghost' },
           ].map(b => (
             <button key={b.id} className={`btn ${b.kind||''}`}
               style={{ justifyContent:'center', padding:'14px 22px', fontSize:16 }}

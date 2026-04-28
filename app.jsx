@@ -98,7 +98,6 @@ const App = () => {
       {/* Operation Center suite */}
       {screen === 'op-hub' && run && <OperationCenter run={run} setRun={setRun} go={setScreen}/>}
       {screen === 'op-follower' && run && <ManageFollower run={run} setRun={setRun} go={setScreen}/>}
-      {screen === 'op-evolve' && run && <ManageFollower run={run} setRun={setRun} go={setScreen} initialSubTab="evolution"/>}
       {screen === 'op-lineup' && run && <ManageFollower run={run} setRun={setRun} go={setScreen} initialSubTab="lineup"/>}
       {screen === 'op-trader' && run && <Trader run={run} setRun={setRun} go={setScreen}/>}
       {screen === 'op-command' && run && <CommandChamber run={run} setRun={setRun} go={setScreen}/>}

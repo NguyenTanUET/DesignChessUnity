@@ -11,17 +11,12 @@ const OperationCenter = ({ run, setRun, go }) => {
     {
       id:'op-follower', label:'Manage Followers', target:'op-follower',
       epithet:'Medical bay & surgical theatre',
-      x: 180, y: 300, w: 300, h: 240,
-    },
-    {
-      id:'op-evolve', label:'Evolution Chamber', target:'op-evolve',
-      epithet:'DNA pool · grafting altar',
-      x: 540, y: 320, w: 280, h: 220,
+      x: 200, y: 300, w: 420, h: 240,
     },
     {
       id:'op-trader', label:'Trader\'s Hold', target:'op-trader',
       epithet:'Cargo manifest · brine market',
-      x: 900, y: 300, w: 280, h: 260,
+      x: 760, y: 300, w: 420, h: 240,
     },
     {
       id:'op-command', label:'Command Chamber', target:'op-command',
@@ -231,80 +226,49 @@ const StationBackdrop = ({ hullFlicker }) => (
       fill="oklch(0.08 0.025 220)" stroke="oklch(0.25 0.05 70)" strokeWidth="1"/>
 
     {/* === ROOM DIVIDERS (walls) === */}
-    {/* vertical walls separating top 3 rooms */}
+    {/* vertical wall separating top 2 rooms */}
     <g stroke="oklch(0.3 0.06 75)" strokeWidth="2" fill="none">
-      <line x1="495" y1="200" x2="495" y2="520"/>
-      <line x1="855" y1="200" x2="855" y2="520"/>
+      <line x1="720" y1="200" x2="720" y2="560"/>
       {/* horizontal floor between top & bottom */}
       <line x1="140" y1="560" x2="1330" y2="560"/>
     </g>
     {/* thin light strips */}
     <g>
       <rect x="140" y="558" width="1190" height="1" fill="oklch(0.7 0.12 195)" opacity="0.3"/>
-      <rect x="495" y="200" width="1" height="320" fill="oklch(0.7 0.12 195)" opacity="0.2"/>
-      <rect x="855" y="200" width="1" height="320" fill="oklch(0.7 0.12 195)" opacity="0.2"/>
+      <rect x="720" y="200" width="1" height="360" fill="oklch(0.7 0.12 195)" opacity="0.2"/>
     </g>
 
     {/* === ROOM 1: Medical Bay (Manage Followers) === */}
     <g opacity="0.85">
       {/* gurney */}
-      <rect x="220" y="440" width="200" height="18" fill="oklch(0.32 0.04 200)" stroke="oklch(0.5 0.06 75)"/>
-      <rect x="220" y="458" width="200" height="60" fill="oklch(0.14 0.03 210)"/>
+      <rect x="260" y="440" width="260" height="18" fill="oklch(0.32 0.04 200)" stroke="oklch(0.5 0.06 75)"/>
+      <rect x="260" y="458" width="260" height="60" fill="oklch(0.14 0.03 210)"/>
       {/* surgical lamp */}
-      <circle cx="320" cy="260" r="22" fill="oklch(0.22 0.04 210)" stroke="oklch(0.5 0.08 75)"/>
-      <circle cx="320" cy="260" r="14" fill="oklch(0.85 0.12 85)" opacity="0.75"/>
-      <line x1="320" y1="238" x2="320" y2="210" stroke="oklch(0.4 0.06 75)" strokeWidth="2"/>
+      <circle cx="390" cy="260" r="22" fill="oklch(0.22 0.04 210)" stroke="oklch(0.5 0.08 75)"/>
+      <circle cx="390" cy="260" r="14" fill="oklch(0.85 0.12 85)" opacity="0.75"/>
+      <line x1="390" y1="238" x2="390" y2="210" stroke="oklch(0.4 0.06 75)" strokeWidth="2"/>
       {/* specimen jars */}
-      {[0,1,2].map(i=>(
-        <g key={i} transform={`translate(${240+i*50} 340)`}>
+      {[0,1,2,3].map(i=>(
+        <g key={i} transform={`translate(${260+i*55} 340)`}>
           <rect x="0" y="0" width="30" height="60" fill="oklch(0.18 0.06 200)" stroke="oklch(0.4 0.06 75)" rx="2"/>
           <ellipse cx="15" cy="30" rx="8" ry="18" fill="oklch(0.45 0.12 195)" opacity="0.7"/>
           <circle cx="15" cy="30" r="2.5" fill="oklch(0.85 0.1 85)" opacity="0.8"/>
         </g>
       ))}
       {/* monitor */}
-      <rect x="400" y="340" width="70" height="50" fill="oklch(0.08 0.02 220)" stroke="oklch(0.5 0.08 75)"/>
-      <polyline points="405,370 420,365 430,355 440,375 455,360 465,370" fill="none" stroke="oklch(0.7 0.14 150)" strokeWidth="1.2"/>
+      <rect x="510" y="340" width="70" height="50" fill="oklch(0.08 0.02 220)" stroke="oklch(0.5 0.08 75)"/>
+      <polyline points="515,370 530,365 540,355 550,375 565,360 575,370" fill="none" stroke="oklch(0.7 0.14 150)" strokeWidth="1.2"/>
     </g>
 
-    {/* === ROOM 2: Evolution Chamber === */}
-    <g opacity="0.85">
-      {/* DNA tank */}
-      <rect x="620" y="360" width="140" height="160" fill="url(#abyss-col)" stroke="oklch(0.5 0.08 75)" strokeWidth="2"/>
-      {/* helix */}
-      {[...Array(8)].map((_,i)=>{
-        const t = i/7;
-        const x1 = 640 + Math.sin(t*Math.PI*3)*30;
-        const x2 = 740 - Math.sin(t*Math.PI*3)*30;
-        const y = 380 + t*120;
-        return (
-          <g key={i}>
-            <circle cx={x1} cy={y} r="3" fill="oklch(0.7 0.14 150)" opacity="0.8"/>
-            <circle cx={x2} cy={y} r="3" fill="oklch(0.7 0.14 150)" opacity="0.8"/>
-            <line x1={x1} y1={y} x2={x2} y2={y} stroke="oklch(0.5 0.1 150)" strokeWidth="0.8" opacity="0.5"/>
-          </g>
-        );
-      })}
-      {/* bubbles */}
-      {[...Array(8)].map((_,i)=>(
-        <circle key={i} cx={625+(i*17)%130} cy={500-((hullFlicker*20+i*35)%140)} r={1.5+(i%2)} fill="oklch(0.8 0.1 150)" opacity="0.5"/>
-      ))}
-      {/* console */}
-      <rect x="555" y="480" width="50" height="36" fill="oklch(0.14 0.03 210)" stroke="oklch(0.4 0.06 75)"/>
-      {[0,1,2].map(i=>(
-        <circle key={i} cx={565+i*12} cy={494} r="2" fill={['oklch(0.7 0.15 25)','oklch(0.8 0.15 85)','oklch(0.7 0.14 150)'][i]} opacity="0.85"/>
-      ))}
-    </g>
-
-    {/* === ROOM 3: Trader's Hold === */}
+    {/* === ROOM 2: Trader's Hold === */}
     <g opacity="0.85">
       {/* shelving */}
       {[0,1,2].map(row=>(
         <g key={row}>
-          <rect x={930} y={260+row*60} width={220} height={4} fill="oklch(0.3 0.05 75)"/>
-          {[...Array(5)].map((_,i)=>{
-            const shape = (row*5+i)%3;
-            const x = 945+i*42, y = 266+row*60;
+          <rect x={780} y={260+row*60} width={320} height={4} fill="oklch(0.3 0.05 75)"/>
+          {[...Array(7)].map((_,i)=>{
+            const shape = (row*7+i)%3;
+            const x = 790+i*44, y = 266+row*60;
             return (
               <g key={i} transform={`translate(${x} ${y})`}>
                 {shape===0 && <rect width="16" height="30" fill="oklch(0.4 0.12 35)" stroke="oklch(0.55 0.1 75)"/>}
@@ -321,12 +285,12 @@ const StationBackdrop = ({ hullFlicker }) => (
         </g>
       ))}
       {/* scale / balance */}
-      <line x1="1010" y1="450" x2="1010" y2="510" stroke="oklch(0.5 0.08 75)" strokeWidth="2"/>
-      <line x1="970" y1="460" x2="1050" y2="460" stroke="oklch(0.5 0.08 75)" strokeWidth="2"/>
-      <line x1="970" y1="460" x2="960" y2="490" stroke="oklch(0.4 0.06 75)" strokeWidth="1"/>
-      <line x1="1050" y1="460" x2="1060" y2="488" stroke="oklch(0.4 0.06 75)" strokeWidth="1"/>
-      <path d="M 945 490 Q 960 485 975 490 L 975 500 L 945 500 Z" fill="oklch(0.35 0.08 75)"/>
-      <path d="M 1045 488 Q 1060 483 1075 488 L 1075 498 L 1045 498 Z" fill="oklch(0.35 0.08 75)"/>
+      <line x1="960" y1="450" x2="960" y2="510" stroke="oklch(0.5 0.08 75)" strokeWidth="2"/>
+      <line x1="920" y1="460" x2="1000" y2="460" stroke="oklch(0.5 0.08 75)" strokeWidth="2"/>
+      <line x1="920" y1="460" x2="910" y2="490" stroke="oklch(0.4 0.06 75)" strokeWidth="1"/>
+      <line x1="1000" y1="460" x2="1010" y2="488" stroke="oklch(0.4 0.06 75)" strokeWidth="1"/>
+      <path d="M 895 490 Q 910 485 925 490 L 925 500 L 895 500 Z" fill="oklch(0.35 0.08 75)"/>
+      <path d="M 995 488 Q 1010 483 1025 488 L 1025 498 L 995 498 Z" fill="oklch(0.35 0.08 75)"/>
     </g>
 
     {/* === ROOM 4: Command Chamber (bottom wide) === */}

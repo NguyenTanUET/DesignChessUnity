@@ -1,8 +1,7 @@
-// Manage Followers — orchestrator with 4 sub-tabs:
+// Manage Followers — orchestrator with 3 sub-tabs:
 //   1. Unit Info  · stats, biography, archetype info
-//   2. Evolution  · 3-tier DNA tree (was a separate screen)
-//   3. Item       · Augmentation + Relic + Quest Items
-//   4. Lineup     · 4 formations (W4 / W6 / W8 / W10)
+//   2. Item       · Augmentation + Relic + Quest Items
+//   3. Lineup     · 4 formations (W4 / W6 / W8 / W10)
 const ManageFollower = ({ run, setRun, go, initialSubTab }) => {
   const roster = run.roster || [];
   const [selId, setSelId] = React.useState(roster[0]?.instanceId || null);
@@ -45,9 +44,6 @@ const ManageFollower = ({ run, setRun, go, initialSubTab }) => {
           {subTab === 'unit-info' && sel && arch && (
             <UnitInfoTab run={run} setRun={setRun} sel={sel} arch={arch} go={go} togglePool={togglePool} setSubTab={setSubTab}/>
           )}
-          {subTab === 'evolution' && sel && arch && (
-            <EvolutionTab run={run} setRun={setRun} selId={sel.instanceId}/>
-          )}
           {subTab === 'item' && (
             <ItemTab run={run} setRun={setRun} sel={sel} arch={arch}/>
           )}
@@ -71,7 +67,6 @@ const ManageFollower = ({ run, setRun, go, initialSubTab }) => {
 const SubNav = ({ active, onChange }) => {
   const tabs = [
     { id:'unit-info', label:'Unit Info',  glyph:'◈', desc:'Specimen biography & patterns' },
-    { id:'evolution', label:'Evolution',  glyph:'✧', desc:'DNA Altar · 3-tier ascension' },
     { id:'item',      label:'Item',       glyph:'⌬', desc:'Augmentation · Relic · Quest' },
     { id:'lineup',    label:'Lineup',     glyph:'▦', desc:'Battle formations · W4/W6/W8/W10' },
   ];
