@@ -1,25 +1,47 @@
-/* Abyssal Gambit — grim-dark oceanic chess roguelike
-   Palette: abyssal teal, bioluminescent cyan, bone-white, brass-gold (tarnished),
-   blood-coral red. Painterly Thronebreaker-style illustrated art via SVG placeholders.
+/* Abyssal Gambit — grim-dark bio-lab chess roguelike (v2 palette: surgery-light)
+   Palette shift: deep abyss → bio-lab vivarium teal.
+   Lifted ~80% in lightness while preserving grim-dark base.
+   Hues nudged from oceanic 200-220 → vivarium 175-195 (jade/cyan biolab).
+   Motif: bioluminescent veins, surgical-lamp rim light, specimen-jar glow.
 */
 :root {
-  --abyss-0: oklch(0.10 0.015 220);   /* deepest ink-ocean */
-  --abyss-1: oklch(0.14 0.022 215);
-  --abyss-2: oklch(0.19 0.03 210);
-  --abyss-3: oklch(0.26 0.04 205);
-  --abyss-4: oklch(0.34 0.05 200);    /* turbid water */
-  --bone: oklch(0.88 0.015 85);
-  --bone-dim: oklch(0.72 0.02 85);
-  --brass: oklch(0.72 0.11 80);        /* tarnished gold */
-  --brass-dim: oklch(0.55 0.09 78);
-  --brass-deep: oklch(0.38 0.07 72);
-  --coral: oklch(0.60 0.18 25);        /* blood coral */
-  --coral-dim: oklch(0.44 0.14 25);
-  --bio: oklch(0.78 0.14 190);         /* bioluminescent cyan */
-  --bio-dim: oklch(0.55 0.11 195);
-  --venom: oklch(0.65 0.14 150);       /* sickly green */
-  --void: oklch(0.35 0.08 290);        /* void purple */
+  /* base — was abyss black-teal; now lifted vivarium teal w/ jade tint */
+  --abyss-0: oklch(0.16 0.022 195);   /* deepest — was 0.10 */
+  --abyss-1: oklch(0.21 0.030 192);   /* was 0.14 */
+  --abyss-2: oklch(0.27 0.038 188);   /* was 0.19 */
+  --abyss-3: oklch(0.34 0.048 185);   /* was 0.26 */
+  --abyss-4: oklch(0.43 0.058 182);   /* turbid culture medium — was 0.34 */
+  --abyss-5: oklch(0.52 0.062 180);   /* new — chamber wall highlight */
 
+  /* bone — was 0.88; lift slightly */
+  --bone:      oklch(0.92 0.018 88);
+  --bone-dim:  oklch(0.78 0.022 88);
+  --bone-deep: oklch(0.62 0.025 86);
+
+  /* brass — cleaner amber, less tarnished */
+  --brass:      oklch(0.80 0.13 82);
+  --brass-dim:  oklch(0.62 0.11 80);
+  --brass-deep: oklch(0.44 0.09 76);
+
+  /* coral / blood — kept */
+  --coral:     oklch(0.66 0.18 25);
+  --coral-dim: oklch(0.50 0.15 25);
+
+  /* bio-cyan accent — nudge chroma up so it still pops on lifted base */
+  --bio:      oklch(0.82 0.16 188);
+  --bio-mid:  oklch(0.68 0.13 190);
+  --bio-dim:  oklch(0.55 0.11 192);
+
+  /* support hues */
+  --venom: oklch(0.70 0.15 148);     /* sickly green — culture pathogen */
+  --void:  oklch(0.42 0.10 290);     /* void-purple — necrotic tissue */
+  --jade:  oklch(0.62 0.12 175);     /* jade — formaldehyde glass */
+
+  /* surgery-light: cool-white spill from above */
+  --surgery: oklch(0.95 0.025 195);
+  --surgery-glow: oklch(0.88 0.06 188 / 0.35);
+
+  /* aliases (keep API stable for screen files) */
   --parchment: var(--bone);
   --parchment-dim: var(--bone-dim);
   --gold: var(--brass);
@@ -36,27 +58,35 @@
   --stone-hi: var(--abyss-4);
   --moss: var(--venom);
   --violet: var(--void);
-  --ink: oklch(0.15 0.02 215);
+  --ink: oklch(0.18 0.025 192);
 
   /* board */
-  --sq-light: oklch(0.45 0.04 200);
-  --sq-dark: oklch(0.22 0.03 210);
+  --sq-light: oklch(0.55 0.055 185);
+  --sq-dark:  oklch(0.30 0.040 192);
 
   --r-sm: 2px;
   --r-md: 3px;
-  --shadow-hard: 0 2px 0 rgba(0,0,0,0.7), 0 12px 32px rgba(0,0,0,0.7);
-  --shadow-inset: inset 0 1px 0 rgba(160,200,220,0.08), inset 0 -2px 0 rgba(0,0,0,0.55);
+  --shadow-hard: 0 2px 0 rgba(0,0,0,0.55), 0 14px 36px rgba(0,15,18,0.65);
+  --shadow-inset: inset 0 1px 0 rgba(180,230,235,0.10), inset 0 -2px 0 rgba(0,0,0,0.45);
+  --shadow-bio:   0 0 24px oklch(0.78 0.14 188 / 0.18);
 }
 
 * { box-sizing: border-box; }
-html, body { margin:0; padding:0; background: var(--abyss-0); color: var(--bone); font-family: 'Inter', system-ui, sans-serif; overflow: hidden; }
+html, body {
+  margin:0; padding:0;
+  background: var(--abyss-0);
+  color: var(--bone);
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow: hidden;
+}
 
 /* ---------- Stage ---------- */
 .stage {
   position: fixed; inset: 0;
   display: grid; place-items: center;
   background:
-    radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.7) 80%),
+    radial-gradient(ellipse at 50% 30%, var(--surgery-glow) 0%, transparent 55%),
+    radial-gradient(ellipse at center, transparent 0%, rgba(0,8,10,0.6) 80%),
     var(--abyss-0);
 }
 .frame {
@@ -64,35 +94,55 @@ html, body { margin:0; padding:0; background: var(--abyss-0); color: var(--bone)
   position: relative;
   background: var(--abyss-1);
   overflow: hidden;
-  box-shadow: 0 0 0 1px oklch(0.06 0.015 220), 0 30px 80px rgba(0,0,0,0.9);
+  box-shadow:
+    0 0 0 1px oklch(0.10 0.02 192),
+    0 30px 80px rgba(0,10,14,0.85),
+    inset 0 1px 0 rgba(180,230,235,0.06);
   transform-origin: center;
 }
 
-/* caustics / water noise */
+/* caustics / culture-medium noise — lighter, more cyan */
 .noise::after {
   content:''; position:absolute; inset:0; pointer-events:none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.5 0 0 0 0 0.6 0 0 0 0.08 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-  mix-blend-mode: screen; opacity: 0.35;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.65 0 0 0 0 0.7 0 0 0 0.10 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  mix-blend-mode: screen; opacity: 0.32;
 }
 
 .vignette::before {
   content:''; position:absolute; inset:0; pointer-events:none;
-  background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.85) 100%);
+  background:
+    radial-gradient(ellipse at 50% -10%, var(--surgery-glow), transparent 50%),
+    radial-gradient(ellipse at center, transparent 45%, rgba(0,5,8,0.78) 100%);
   z-index: 5;
 }
 
-/* slow floating particles (plankton) */
+/* ---------- Bio-luminescent veins overlay ----------
+   Subtle branching capillary network. Use as ::after on any element via .veins. */
+.veins {
+  position: relative;
+}
+.veins::after {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='420' height='420' viewBox='0 0 420 420'><defs><filter id='g'><feGaussianBlur stdDeviation='0.6'/></filter></defs><g fill='none' stroke='%2380e8f0' stroke-width='0.7' stroke-linecap='round' opacity='0.55' filter='url(%23g)'><path d='M-10 60 Q 80 90 130 70 T 250 110 T 380 90'/><path d='M 130 70 Q 145 130 160 180 T 200 290'/><path d='M 250 110 Q 280 160 290 230 T 320 360'/><path d='M -10 200 Q 70 230 140 215 T 280 235 T 430 220'/><path d='M 140 215 Q 130 270 150 320 T 190 430'/><path d='M 280 235 Q 320 280 340 350'/><path d='M -10 340 Q 80 360 160 350 T 320 370 T 430 350'/><path d='M 60 -10 Q 80 90 70 200 T 90 410'/><path d='M 220 -10 Q 240 100 230 220 T 250 410'/><path d='M 360 -10 Q 380 110 370 230 T 390 410'/></g></svg>");
+  background-size: 100% 100%;
+  mix-blend-mode: screen;
+  opacity: 0.16;
+}
+.veins.strong::after { opacity: 0.32; }
+.veins.subtle::after { opacity: 0.08; }
+
+/* slow floating particles (plankton / spores) */
 .plankton { position:absolute; inset:0; pointer-events:none; z-index:1; overflow:hidden; }
 .plankton span {
   position:absolute; display:block; width:3px; height:3px; border-radius:50%;
-  background: var(--bio); box-shadow:0 0 6px var(--bio);
-  opacity:0.5;
+  background: var(--bio); box-shadow:0 0 8px var(--bio);
+  opacity:0.55;
   animation: drift linear infinite;
 }
 @keyframes drift {
   0% { transform: translateY(100%) translateX(0); opacity:0; }
-  10% { opacity: 0.6; }
-  90% { opacity: 0.5; }
+  10% { opacity: 0.7; }
+  90% { opacity: 0.55; }
   100% { transform: translateY(-10%) translateX(20px); opacity:0; }
 }
 
@@ -120,15 +170,19 @@ h1, h2, h3, h4, .serif { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, s
 }
 .btn::before { top:2px; left:2px; border-right:0; border-bottom:0; }
 .btn::after { bottom:2px; right:2px; border-left:0; border-top:0; }
-.btn:hover { border-color: var(--brass); color: var(--brass); transform: translateY(-1px); }
+.btn:hover { border-color: var(--brass); color: var(--brass); transform: translateY(-1px); box-shadow: var(--shadow-inset), var(--shadow-hard), 0 0 18px oklch(0.80 0.13 82 / 0.25); }
 .btn:active { transform: translateY(1px); }
 .btn.primary {
-  background: linear-gradient(180deg, oklch(0.36 0.09 200), oklch(0.22 0.06 210));
-  border-color: var(--brass); color: oklch(0.95 0.04 85);
+  background: linear-gradient(180deg, oklch(0.45 0.10 188), oklch(0.28 0.07 192));
+  border-color: var(--brass); color: oklch(0.97 0.04 88);
+  box-shadow: var(--shadow-inset), var(--shadow-hard), 0 0 22px oklch(0.78 0.14 188 / 0.28);
 }
-.btn.primary:hover { background: linear-gradient(180deg, oklch(0.42 0.11 200), oklch(0.28 0.07 210)); }
-.btn.danger { border-color: var(--coral-dim); color: oklch(0.78 0.12 25); }
-.btn.danger:hover { border-color: var(--coral); color: oklch(0.9 0.14 25); }
+.btn.primary:hover {
+  background: linear-gradient(180deg, oklch(0.52 0.12 188), oklch(0.34 0.08 192));
+  box-shadow: var(--shadow-inset), var(--shadow-hard), 0 0 28px oklch(0.82 0.16 188 / 0.45);
+}
+.btn.danger { border-color: var(--coral-dim); color: oklch(0.82 0.13 25); }
+.btn.danger:hover { border-color: var(--coral); color: oklch(0.92 0.16 25); box-shadow: var(--shadow-inset), var(--shadow-hard), 0 0 18px oklch(0.66 0.18 25 / 0.35); }
 .btn.ghost { background: transparent; border-color: var(--abyss-4); }
 .btn.sm { padding: 6px 14px; font-size: 12px; }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -140,8 +194,8 @@ h1, h2, h3, h4, .serif { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, s
   box-shadow: var(--shadow-inset);
   position: relative;
 }
-.card.gold { border-color: var(--brass-deep); }
-.card.rare { border-color: var(--bio-dim); }
+.card.gold  { border-color: var(--brass-deep); }
+.card.rare  { border-color: var(--bio-dim); box-shadow: var(--shadow-inset), 0 0 16px oklch(0.55 0.11 192 / 0.20); }
 .card.blood { border-color: var(--coral-dim); }
 
 /* ornamental filigree corners */
@@ -167,14 +221,23 @@ h1, h2, h3, h4, .serif { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, s
 .divider.fancy::after { background: linear-gradient(90deg, var(--brass-deep), transparent); }
 .divider.fancy span { margin:0 12px; color: var(--brass-dim); font-size:10px; }
 
+/* suture-line variant — surgical aesthetic */
+.divider.suture {
+  height: 1px;
+  background-image: repeating-linear-gradient(90deg, var(--brass-deep) 0 8px, transparent 8px 14px);
+  margin: 12px 0;
+}
+
 /* ---------- Top bar ---------- */
 .topbar {
   position: absolute; top: 0; left: 0; right: 0; height: 56px;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 24px;
-  background: linear-gradient(180deg, rgba(0,0,0,0.7), rgba(0,0,0,0.2));
+  background:
+    linear-gradient(180deg, rgba(0,8,10,0.72), rgba(0,8,10,0.18)),
+    linear-gradient(180deg, var(--abyss-2), transparent);
   border-bottom: 1px solid var(--abyss-4);
-  box-shadow: 0 0 24px rgba(0,30,50,0.6);
+  box-shadow: 0 0 24px rgba(20,80,95,0.35);
   z-index: 20;
 }
 .topbar::after {
@@ -190,9 +253,9 @@ h1, h2, h3, h4, .serif { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, s
 
 .map-node { cursor:pointer; transition: transform 0.2s, filter 0.2s; }
 .map-node:hover { filter: drop-shadow(0 0 10px var(--bio)); }
-.map-node.locked { opacity:0.28; cursor:not-allowed; }
+.map-node.locked { opacity:0.30; cursor:not-allowed; }
 .map-node.available .halo { animation: pulse 2.4s ease-in-out infinite; }
-@keyframes pulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
+@keyframes pulse { 0%,100%{opacity:0.35} 50%{opacity:1} }
 
 .map-side {
   width: 290px; border-left: 1px solid var(--abyss-4); padding: 16px;
@@ -201,18 +264,22 @@ h1, h2, h3, h4, .serif { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, s
   display: flex; flex-direction: column; gap: 14px;
 }
 
-/* ---------- Chessboard (kept for world-map hints; Match uses its own) ---------- */
+/* ---------- Chessboard ---------- */
 .board {
   display:grid;
   grid-template-columns: repeat(var(--n,8), 1fr);
   grid-template-rows: repeat(var(--n,8), 1fr);
   border: 4px solid var(--abyss-3);
-  box-shadow: 0 0 0 1px var(--brass-deep), 0 20px 50px rgba(0,0,0,0.9), var(--shadow-inset);
+  box-shadow:
+    0 0 0 1px var(--brass-deep),
+    0 20px 50px rgba(0,8,12,0.85),
+    0 0 60px oklch(0.55 0.11 192 / 0.18),
+    var(--shadow-inset);
   background: var(--abyss-3);
 }
 .sq { position:relative; display:grid; place-items:center; font-size:44px; user-select:none; }
 .sq.light { background: var(--sq-light); color: var(--ink); }
-.sq.dark { background: var(--sq-dark); color: oklch(0.85 0.03 85); }
+.sq.dark  { background: var(--sq-dark);  color: oklch(0.88 0.03 88); }
 
 /* ---------- Panels ---------- */
 .panel {
@@ -224,7 +291,7 @@ h1, h2, h3, h4, .serif { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, s
 }
 .panel::before {
   content:''; position:absolute; inset:0; pointer-events:none;
-  background: linear-gradient(180deg, rgba(160,200,220,0.04), transparent 40%);
+  background: linear-gradient(180deg, rgba(180,230,235,0.06), transparent 40%);
   border-radius: var(--r-md);
 }
 
@@ -232,11 +299,11 @@ h1, h2, h3, h4, .serif { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, s
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--abyss-1); }
 ::-webkit-scrollbar-thumb { background: var(--abyss-4); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--abyss-3); }
+::-webkit-scrollbar-thumb:hover { background: var(--abyss-5); }
 
 /* ---------- Modal ---------- */
 .modal-backdrop {
-  position:absolute; inset:0; background: rgba(0,5,10,0.78); backdrop-filter: blur(2px);
+  position:absolute; inset:0; background: rgba(0,8,12,0.74); backdrop-filter: blur(2px);
   display:grid; place-items:center; z-index:30;
   animation: fadeIn 0.2s ease;
 }
@@ -246,7 +313,10 @@ h1, h2, h3, h4, .serif { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, s
   background: linear-gradient(180deg, var(--abyss-2), var(--abyss-1));
   border: 1px solid var(--brass-deep);
   border-radius: var(--r-md);
-  box-shadow: 0 40px 100px rgba(0,0,0,0.95), var(--shadow-inset), 0 0 60px rgba(30,120,150,0.2);
+  box-shadow:
+    0 40px 100px rgba(0,8,12,0.92),
+    var(--shadow-inset),
+    0 0 70px oklch(0.55 0.11 192 / 0.22);
   padding: 28px;
 }
 
@@ -287,27 +357,51 @@ h1, h2, h3, h4, .serif { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, s
   font-size: 20px;
 }
 
-/* painterly portrait placeholder — dark ocean wash w/ noise + teal gradient */
+/* painterly portrait — bio-lab specimen jar wash + capillary veins */
 .portrait {
   width:100%; aspect-ratio:1;
   background:
-    radial-gradient(ellipse at 40% 30%, oklch(0.28 0.05 200 / 0.9), transparent 60%),
-    radial-gradient(ellipse at 70% 80%, oklch(0.18 0.08 280 / 0.8), transparent 60%),
+    radial-gradient(ellipse at 40% 25%, oklch(0.45 0.07 188 / 0.85), transparent 60%),
+    radial-gradient(ellipse at 70% 80%, oklch(0.28 0.10 280 / 0.6), transparent 60%),
     linear-gradient(180deg, var(--abyss-3), var(--abyss-0));
   border: 1px solid var(--brass-deep);
   display:grid; place-items:center;
   font-family:'JetBrains Mono', monospace; font-size:10px;
   color: var(--bone-dim); text-transform:uppercase; letter-spacing:0.15em;
-  position:relative;
-  box-shadow: inset 0 0 40px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(180,140,60,0.2);
+  position:relative; overflow:hidden;
+  box-shadow:
+    inset 0 0 40px rgba(0,8,12,0.55),
+    inset 0 0 0 1px rgba(200,160,80,0.22),
+    inset 0 30px 50px oklch(0.78 0.14 188 / 0.10);  /* top rim from surgery lamp */
 }
 .portrait::before {
   content:''; position:absolute; inset:0; pointer-events:none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.018' numOctaves='3'/><feColorMatrix values='0 0 0 0 0.2 0 0 0 0 0.35 0 0 0 0 0.4 0 0 0 0.4 0'/></filter><rect width='100%' height='100%' filter='url(%23f)'/></svg>");
-  mix-blend-mode: overlay; opacity:0.7;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.018' numOctaves='3'/><feColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.5 0 0 0 0 0.55 0 0 0 0.45 0'/></filter><rect width='100%' height='100%' filter='url(%23f)'/></svg>");
+  mix-blend-mode: overlay; opacity:0.65;
+}
+/* veins inside portrait */
+.portrait::after {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><g fill='none' stroke='%239de8f0' stroke-width='0.6' stroke-linecap='round' opacity='0.7'><path d='M 110 -10 Q 90 60 100 110 T 80 230'/><path d='M 100 110 Q 60 130 30 145'/><path d='M 100 110 Q 140 130 175 150'/><path d='M -10 70 Q 50 80 100 110'/><path d='M 230 80 Q 170 90 100 110'/><path d='M 80 230 Q 70 200 50 175'/><path d='M 80 230 Q 95 195 120 175'/></g></svg>");
+  background-size: 100% 100%;
+  mix-blend-mode: screen;
+  opacity: 0.22;
 }
 .portrait .glyph {
-  font-size: 80px; font-family:'Cinzel', serif; color: var(--bone); opacity:0.95;
-  text-shadow: 0 4px 20px rgba(0,0,0,0.9), 0 0 30px oklch(0.5 0.12 190 / 0.4);
+  font-size: 80px; font-family:'Cinzel', serif; color: var(--bone); opacity:0.96;
+  text-shadow:
+    0 4px 20px rgba(0,8,12,0.85),
+    0 0 30px oklch(0.78 0.14 188 / 0.55);
   position:relative; z-index:1;
+}
+
+/* utility: surgery lamp spill — drop on any container that wants top rim light */
+.surgical-rim {
+  position: relative;
+}
+.surgical-rim::before {
+  content:''; position:absolute; left:0; right:0; top:0; height:60%;
+  pointer-events:none;
+  background: radial-gradient(ellipse at 50% -20%, oklch(0.85 0.06 188 / 0.18), transparent 60%);
+  z-index: 0;
 }
