@@ -84,10 +84,7 @@ html, body {
 .stage {
   position: fixed; inset: 0;
   display: grid; place-items: center;
-  background:
-    radial-gradient(ellipse at 50% 30%, var(--surgery-glow) 0%, transparent 55%),
-    radial-gradient(ellipse at center, transparent 0%, rgba(0,8,10,0.6) 80%),
-    var(--abyss-0);
+  background: var(--abyss-0);
 }
 .frame {
   width: 1440px; height: 900px;
@@ -108,13 +105,8 @@ html, body {
   mix-blend-mode: screen; opacity: 0.32;
 }
 
-.vignette::before {
-  content:''; position:absolute; inset:0; pointer-events:none;
-  background:
-    radial-gradient(ellipse at 50% -10%, var(--surgery-glow), transparent 50%),
-    radial-gradient(ellipse at center, transparent 45%, rgba(0,5,8,0.78) 100%);
-  z-index: 5;
-}
+/* vignette intentionally disabled — flat lighting */
+.vignette::before { content: none; }
 
 /* ---------- Bio-luminescent veins overlay ----------
    Subtle branching capillary network. Use as ::after on any element via .veins. */
