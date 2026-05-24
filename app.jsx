@@ -14,6 +14,12 @@ const App = () => {
   const [tweaks, setTweaks] = useState(TWEAK_DEFAULTS);
   const [tweaksOn, setTweaksOn] = useState(false);
 
+  // Track last non-settings screen so Settings' Back button returns there.
+  const lastNonSettings = React.useRef('menu');
+  useEffect(() => {
+    if (screen !== 'settings') lastNonSettings.current = screen;
+  }, [screen]);
+
   // Persist screen
   useEffect(() => {
     const s = localStorage.getItem('gok.screen');
@@ -111,6 +117,8 @@ const App = () => {
       {screen === 'gameover-win' && run && <GameOver won={true} run={run} onAgain={newRun} onMenu={()=>setScreen('menu')}/>}
       {screen === 'gameover-lose' && run && <GameOver won={false} run={run} onAgain={newRun} onMenu={()=>setScreen('menu')}/>}
 
+      {screen === 'settings' && <Settings go={setScreen} returnTo={lastNonSettings.current}/>}
+
       {nodePreview && run && (
         <NodePreview node={nodePreview} run={run} onClose={()=>setNodePreview(null)} onEnter={enterMatch}/>
       )}
@@ -133,6 +141,7 @@ const App = () => {
           <option value="inventory">Inventory</option>
           <option value="gameover-win">Victory</option>
           <option value="gameover-lose">Defeat</option>
+          <option value="settings">Settings</option>
         </select>
       </div>
 

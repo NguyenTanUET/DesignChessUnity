@@ -124,7 +124,7 @@ const MainMenu = ({ go, setRun }) => {
         <div style={{ display:'flex', flexDirection:'column', gap:10, width:340, margin:'0 auto' }}>
           {[
             { id:'new', label:'Start Game', kind:'primary', onClick: spawnNewBrood },
-            { id:'opts', label:'Settings', kind:'ghost' },
+            { id:'opts', label:'Settings', kind:'ghost', onClick: ()=>go('settings') },
             { id:'credit', label:'Credits', kind:'ghost' },
             { id:'exit', label:'Exit', kind:'ghost' },
           ].map(b => (
