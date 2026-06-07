@@ -57,10 +57,11 @@ const App = () => {
     setScreen('match');
   };
 
-  const finishMatchWin = () => setScreen('reward');
   const finishMatchLose = () => setScreen('gameover-lose');
 
-  const claimReward = (updates) => {
+  // Match-win advances directly to the next node (or assignment victory).
+  // The intermediate Reward screen has been retired — node-level spoils are no longer surfaced here.
+  const finishMatchWin = () => {
     const assignment = window.getAssignment(run.assignmentIdx || 0);
     const nextIdx = (run.currentNodeIdx || 0) + 1;
     const completedAssignment = nextIdx >= assignment.nodes.length;
@@ -69,7 +70,6 @@ const App = () => {
 
     setRun(r => ({
       ...r,
-      ...updates,
       currentNode: currentNode.id,
       visited: [...r.visited, currentNode.id],
       floor: completedAssignment ? r.floor+1 : r.floor,
@@ -78,17 +78,6 @@ const App = () => {
     }));
     if (allDone) setScreen('gameover-win');
     else setScreen('map');
-  };
-
-  const buy = (item) => {
-    setRun(r => {
-      const next = { ...r, gold: r.gold - item.cost };
-      if (item.kind === 'piece') next.deck = [...r.deck, item.key];
-      if (item.kind === 'relic') next.relics = [...r.relics, item.relic];
-      if (item.id === 'heal') next.hp = Math.min(r.hpMax, r.hp + 1);
-      if (item.id === 'purge') { const idx = r.deck.indexOf('P'); if (idx>=0) { const d=[...r.deck]; d.splice(idx,1); next.deck=d; } }
-      return next;
-    });
   };
 
   const newRun = () => {
@@ -111,9 +100,6 @@ const App = () => {
       {/* Mission — world map & battles */}
       {screen === 'map' && run && <WorldMap go={setScreen} run={run} setRun={setRun} openNode={openNode}/>}
       {screen === 'match' && run && <Match run={run} enemy={currentEnemy} node={currentNode} boardSize={tweaks.boardSize} onWin={finishMatchWin} onLose={finishMatchLose}/>}
-      {screen === 'reward' && run && <Reward run={run} node={currentNode} enemy={currentEnemy} onClaim={claimReward}/>}
-      {screen === 'shop' && run && <Shop run={run} onClose={()=>setScreen('map')} onBuy={buy}/>}
-      {screen === 'inventory' && run && <Inventory run={run} onClose={()=>setScreen('map')}/>}
       {screen === 'gameover-win' && run && <GameOver won={true} run={run} onAgain={newRun} onMenu={()=>setScreen('menu')}/>}
       {screen === 'gameover-lose' && run && <GameOver won={false} run={run} onAgain={newRun} onMenu={()=>setScreen('menu')}/>}
 
@@ -136,9 +122,6 @@ const App = () => {
           <option value="op-command">Op · Command</option>
           <option value="map">World Map</option>
           <option value="match">Match</option>
-          <option value="reward">Reward</option>
-          <option value="shop">Shop</option>
-          <option value="inventory">Inventory</option>
           <option value="gameover-win">Victory</option>
           <option value="gameover-lose">Defeat</option>
           <option value="settings">Settings</option>
