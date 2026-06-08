@@ -15,6 +15,7 @@
 const SparringField = ({ run, setRun, go }) => {
   const cfg    = run.trainingConfig || {};
   const width  = cfg.width || 8;
+  const height = width + 2;   // board is W wide × (W+2) tall
   const roster = run.roster || [];
   const pool   = (run.lineups || {})[width] || [];
 
@@ -45,7 +46,7 @@ const SparringField = ({ run, setRun, go }) => {
       const m = k.match(/r(\d+)c(\d+)/);
       if (!m) continue;
       const rank = +m[1], col = +m[2];
-      const row = anchor === 'bottom' ? (width - 1 - rank) : rank;
+      const row = anchor === 'bottom' ? (height - 1 - rank) : rank;
       out[`${row}-${col}`] = iid;
     }
     return out;
@@ -55,12 +56,12 @@ const SparringField = ({ run, setRun, go }) => {
 
   // A square belongs to a side's deployment zone (its original two ranks).
   const inZone = (side, row) => side === 'A'
-    ? (row === width - 1 || row === width - 2)
+    ? (row === height - 1 || row === height - 2)
     : (row === 0 || row === 1);
 
   // Convert an absolute (row,col) back to the lineup's own rank/col key.
   const sqKey = (side, row, col) => {
-    const rank = side === 'A' ? (width - 1 - row) : row;
+    const rank = side === 'A' ? (height - 1 - row) : row;
     return `r${rank}c${col}`;
   };
 
@@ -186,7 +187,7 @@ const SparringField = ({ run, setRun, go }) => {
               onChoose={()=>setRelicPicker('B')} onClear={()=>setSideRelic('B', null)}/>
 
             <SparringBoard
-              width={width} cell={cell} roster={roster}
+              width={width} height={height} cell={cell} roster={roster}
               cellsA={cellsA} cellsB={cellsB}
               colorA={sideA.color} colorB={sideB.color}
               dragInfo={dragInfo}
@@ -330,12 +331,12 @@ const SparringField = ({ run, setRun, go }) => {
 // --- The W×W board. Side A occupies the bottom two ranks, side B the top two.
 // Left-click selects/moves; right-click opens the info popup. Each piece keeps
 // its archetype glyph/colour with a thin side-coloured accent.
-const SparringBoard = ({ width, cell, roster, cellsA, cellsB, colorA, colorB,
+const SparringBoard = ({ width, height, cell, roster, cellsA, cellsB, colorA, colorB,
   dragInfo, onDragStartPiece, onDragEndPiece, onDropSquare, onPieceContext }) => {
   const lookup = id => roster.find(f => f.instanceId === id);
 
   const rows = [];
-  for (let r = 0; r < width; r++) {
+  for (let r = 0; r < height; r++) {
     for (let c = 0; c < width; c++) rows.push({ r, c });
   }
 
@@ -343,7 +344,7 @@ const SparringBoard = ({ width, cell, roster, cellsA, cellsB, colorA, colorB,
     <div style={{
       display:'inline-grid',
       gridTemplateColumns:`repeat(${width}, ${cell}px)`,
-      gridTemplateRows:`repeat(${width}, ${cell}px)`,
+      gridTemplateRows:`repeat(${height}, ${cell}px)`,
       border:'1px solid var(--brass-deep)',
       boxShadow:'0 12px 40px rgba(0,0,0,0.7), inset 0 0 30px rgba(0,0,0,0.6)',
       background:'var(--abyss-1)', position:'relative',
@@ -359,7 +360,7 @@ const SparringBoard = ({ width, cell, roster, cellsA, cellsB, colorA, colorB,
         const occ = occId ? lookup(occId) : null;
         const a = occ ? FOLLOWER_ARCHETYPES[occ.archetype] : null;
 
-        const isPlayerRegion = r >= width - 2;
+        const isPlayerRegion = r >= height - 2;
         const isAIRegion = r <= 1;
         const regionTint = isPlayerRegion ? `${colorA}14` : isAIRegion ? `${colorB}14` : 'transparent';
 
@@ -381,7 +382,7 @@ const SparringBoard = ({ width, cell, roster, cellsA, cellsB, colorA, colorB,
               background: dark ? 'oklch(0.14 0.02 220)' : 'oklch(0.22 0.03 220)',
               display:'grid', placeItems:'center',
               borderRight: c === width-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
-              borderBottom: r === width-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
+              borderBottom: r === height-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
             }}>
             {/* faint home/enemy region wash */}
             <div style={{ position:'absolute', inset:0, background:regionTint, pointerEvents:'none' }}/>
