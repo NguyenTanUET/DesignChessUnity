@@ -1,6 +1,12 @@
 // Command Chamber — 4 sub-halls: Assignment · Reflection · Portal · Training Ground
 const CommandChamber = ({ run, setRun, go }) => {
-  const [subTab, setSubTab] = React.useState('assignment');
+  // Honor a one-shot return tab (e.g. coming back from the Sparring Field), then
+  // clear it so normal entry defaults to Assignment.
+  const [subTab, setSubTab] = React.useState(run.commandSubTab || 'assignment');
+  React.useEffect(() => {
+    if (run.commandSubTab) setRun(r => { const { commandSubTab, ...rest } = r; return rest; });
+  // eslint-disable-next-line
+  }, []);
 
   return (
     <div className="screen" style={{ position:'absolute', inset:0, background:'var(--abyss-0)' }}>
@@ -768,47 +774,81 @@ const PortalStat = ({ k, v, accent }) => (
 // =============================================================================
 // PANEL 4 · TRAINING GROUND — custom both-side unit builder
 // =============================================================================
-const TRAINING_PIECES = [
-  { key:'P', name:'Larva',     glyph:'♙' },
-  { key:'N', name:'Outrider',  glyph:'♘' },
-  { key:'B', name:'Prelate',   glyph:'♗' },
-  { key:'R', name:'Colossus',  glyph:'♖' },
-  { key:'Q', name:'Sovereign', glyph:'♕' },
-  { key:'A', name:'Anchorite', glyph:'⚹' },
-  { key:'G', name:'Gambit',    glyph:'⚙' },
-  { key:'S', name:'Siren',     glyph:'☥' },
-  { key:'W', name:'Wyrm',      glyph:'⚯' },
+const TRAINING_FORMATIONS = [
+  { w:4,  label:'W4',  title:'Skirmish',  color:'oklch(0.7 0.12 35)' },
+  { w:6,  label:'W6',  title:'Vanguard',  color:'oklch(0.7 0.13 195)' },
+  { w:8,  label:'W8',  title:'Standard',  color:'var(--brass)' },
+  { w:10, label:'W10', title:'Tide-Wall', color:'oklch(0.65 0.15 290)' },
+];
+
+const TRAINING_MODES = [
+  { id:'pvp',   label:'PvP',      glyph:'⚔', tag:'Player · Player',
+    blurb:'Two sovereigns share one board — a hot-seat duel.' },
+  { id:'pvai',  label:'P vs AI',  glyph:'◈', tag:'Player · Machine',
+    blurb:'Your chosen lineup against a Reef-mind brood.' },
+  { id:'aivai', label:'AI vs AI', glyph:'◐', tag:'Machine · Machine',
+    blurb:'Loose two lineups and watch the patterns unfold.' },
 ];
 
 const TrainingPanel = ({ run, setRun, go }) => {
-  const [boardSize, setBoardSize] = React.useState(8);
-  const [turnLimit, setTurnLimit] = React.useState(40);
+  const roster     = run.roster  || [];
+  const allLineups = run.lineups || {};
+
+  const [mode,    setMode]    = React.useState('pvai');
+  const [width,   setWidth]   = React.useState(run.lineupWidth || 6);
+  const [sideAId, setSideAId] = React.useState(null);
+  const [sideBId, setSideBId] = React.useState(null);
   const [aiSkill, setAiSkill] = React.useState('measured');
-  const [playerSide, setPlayerSide] = React.useState({ P:4, N:1, B:1, R:1, Q:1, A:0, G:0, S:0, W:0 });
-  const [enemySide, setEnemySide]   = React.useState({ P:4, N:1, B:1, R:1, Q:1, A:0, G:0, S:0, W:0 });
 
-  const totalP = Object.values(playerSide).reduce((a,b)=>a+b, 0);
-  const totalE = Object.values(enemySide).reduce((a,b)=>a+b, 0);
-  const capPerSide = Math.floor(boardSize * 1.5);
+  // Only lineups with pieces actually placed can spar. BOTH sides draw from the
+  // SAME width's pool — that is the shared-W constraint, enforced by construction.
+  const eligibleFor = (w) => (allLineups[w] || []).filter(ln => Object.keys(ln.board || {}).length > 0);
+  const eligible = eligibleFor(width);
 
-  const bump = (side, key, delta) => {
-    const setter = side === 'player' ? setPlayerSide : setEnemySide;
-    const current = side === 'player' ? playerSide : enemySide;
-    const total   = side === 'player' ? totalP : totalE;
-    const next = Math.max(0, (current[key] || 0) + delta);
-    if (delta > 0 && total >= capPerSide) return;
-    if (key === 'Q' && next > 1) return; // 1 sovereign max
-    setter({ ...current, [key]: next });
-  };
+  // When the shared width changes, re-seed both side selections to that pool.
+  React.useEffect(() => {
+    const fresh = eligibleFor(width);
+    setSideAId(fresh[0]?.id || null);
+    setSideBId(fresh[1]?.id || fresh[0]?.id || null);
+  // eslint-disable-next-line
+  }, [width]);
 
-  const reset = () => {
-    setPlayerSide({ P:4, N:1, B:1, R:1, Q:1, A:0, G:0, S:0, W:0 });
-    setEnemySide({ P:4, N:1, B:1, R:1, Q:1, A:0, G:0, S:0, W:0 });
-  };
+  // Persist chosen width so the Lineup tab opens on the same formation.
+  React.useEffect(() => {
+    setRun(r => r.lineupWidth === width ? r : { ...r, lineupWidth: width });
+  // eslint-disable-next-line
+  }, [width]);
 
-  const beginSparring = () => {
-    // UI scaffolding — wire to Match with custom config later.
-    setRun(r => ({ ...r, trainingConfig: { boardSize, turnLimit, aiSkill, playerSide, enemySide } }));
+  const sideA = eligible.find(l => l.id === sideAId) || null;
+  const sideB = eligible.find(l => l.id === sideBId) || null;
+
+  const isPvP      = mode === 'pvp';
+  const isAIvAI    = mode === 'aivai';
+  const involvesAI = mode !== 'pvp';
+
+  // Per-mode framing for the two columns.
+  const sides = isAIvAI
+    ? [
+        { key:'A', title:'AI · Sovereign I',  subtitle:'First machine brood',  color:'var(--bio)',   colorDim:'var(--bio-dim)',   glyph:'◐' },
+        { key:'B', title:'AI · Sovereign II', subtitle:'Second machine brood', color:'var(--coral)', colorDim:'var(--coral-dim)', glyph:'◑' },
+      ]
+    : [
+        { key:'A', title:'Your Lineup',     subtitle:'The hand you will play', color:'var(--bio)',   colorDim:'var(--bio-dim)',   glyph:'◈' },
+        { key:'B', title:'Enemy AI Lineup', subtitle:'The machine you face',   color:'var(--coral)', colorDim:'var(--coral-dim)', glyph:'◣' },
+      ];
+
+  const forge = () => { setRun(r => ({ ...r, lineupWidth: width })); go('op-lineup'); };
+
+  const canBegin = !isPvP && !!sideA && !!sideB;
+
+  // Stash the chosen bout and open the Sparring Field scene with both lineups loaded.
+  const loadLineup = () => {
+    if (!canBegin) return;
+    setRun(r => ({ ...r, trainingConfig: {
+      mode, width, sideA: sideAId, sideB: sideBId,
+      aiSkill: involvesAI ? aiSkill : null,
+    }}));
+    go('training-board');
   };
 
   const aiOptions = [
@@ -829,109 +869,125 @@ const TrainingPanel = ({ run, setRun, go }) => {
           </h1>
           <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:14, color:'var(--bone-dim)',
             fontStyle:'italic', lineHeight:1.6, maxWidth:760 }}>
-            Compose both broods. Set the board. The Reef remembers no test —
-            try every formation, every counter, until the patterns are bone-deep.
+            Choose the manner of the bout, then array both broods. The Reef remembers no test —
+            both lineups must share the same width to meet across the same board.
           </div>
         </div>
 
-        {/* Parameters bar */}
-        <div className="panel ornate" style={{ padding:'16px 20px', marginBottom:22,
-          display:'grid', gridTemplateColumns:'1fr 1fr 2fr', gap:24 }}>
+        {/* Mode selector */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:12, marginBottom:22 }}>
+          {TRAINING_MODES.map(m => (
+            <TrainingModeCard key={m.id} mode={m} active={mode===m.id} onClick={()=>setMode(m.id)}/>
+          ))}
+        </div>
 
-          <ParamGroup label="Board Size">
-            <SegPick value={boardSize} onChange={setBoardSize}
-              options={[{value:6,label:'6×6'},{value:8,label:'8×8'},{value:10,label:'10×10'}]}/>
-          </ParamGroup>
+        {isPvP ? (
+          <TrainingPvPPlaceholder/>
+        ) : (
+          <>
+            {/* Shared formation width + bout params */}
+            <div className="panel ornate" style={{ padding:'16px 20px', marginBottom:22,
+              display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:24 }}>
 
-          <ParamGroup label="Turn Limit">
-            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <input type="range" min={20} max={120} step={5} value={turnLimit}
-                onChange={e=>setTurnLimit(Number(e.target.value))}
-                style={{ flex:1, accentColor:'var(--bio)' }}/>
-              <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:13, color:'var(--brass)',
-                minWidth:50, textAlign:'right' }}>
-                {turnLimit}
-              </span>
+              <ParamGroup label="Shared Formation · Width">
+                <div style={{ display:'flex', gap:6 }}>
+                  {TRAINING_FORMATIONS.map(f => {
+                    const isSel = width === f.w;
+                    const cnt = eligibleFor(f.w).length;
+                    return (
+                      <button key={f.w} onClick={()=>setWidth(f.w)} title={`${f.title} · ${cnt} ready`}
+                        style={{
+                          flex:1, padding:'8px 6px', cursor:'pointer', textAlign:'center',
+                          background: isSel ? 'linear-gradient(180deg, var(--abyss-3), var(--abyss-2))' : 'var(--abyss-2)',
+                          border:`1px solid ${isSel ? f.color : 'var(--abyss-4)'}`,
+                          borderTop:`3px solid ${isSel ? f.color : 'var(--abyss-4)'}`,
+                          color: isSel ? f.color : 'var(--bone-dim)', transition:'all 0.15s',
+                        }}>
+                        <div style={{ fontFamily:'Cinzel, serif', fontSize:15, letterSpacing:'0.05em' }}>{f.label}</div>
+                        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8,
+                          color: cnt>0 ? 'var(--bone-dim)' : 'var(--abyss-4)', letterSpacing:'0.15em', marginTop:2 }}>
+                          {cnt} READY
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </ParamGroup>
+
+              <ParamGroup label="AI Skill">
+                <div style={{ display:'flex', gap:6 }}>
+                  {aiOptions.map(a => {
+                    const isSel = aiSkill === a.id;
+                    return (
+                      <button key={a.id} onClick={()=>setAiSkill(a.id)} title={a.desc}
+                        style={{
+                          flex:1, padding:'8px 6px', cursor:'pointer',
+                          background: isSel
+                            ? 'linear-gradient(180deg, oklch(0.35 0.08 188), oklch(0.22 0.05 192))'
+                            : 'var(--abyss-2)',
+                          border:`1px solid ${isSel ? 'var(--brass)' : 'var(--abyss-4)'}`,
+                          color: isSel ? 'var(--brass)' : 'var(--bone-dim)',
+                          fontFamily:'Cinzel, serif', fontSize:11, letterSpacing:'0.08em', textTransform:'uppercase',
+                          transition:'all 0.15s',
+                        }}>
+                        {a.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </ParamGroup>
             </div>
-          </ParamGroup>
 
-          <ParamGroup label="Enemy AI Skill">
-            <div style={{ display:'flex', gap:6 }}>
-              {aiOptions.map(a => {
-                const isSel = aiSkill === a.id;
-                return (
-                  <button key={a.id} onClick={()=>setAiSkill(a.id)} title={a.desc}
-                    style={{
-                      flex:1, padding:'8px 6px', cursor:'pointer',
-                      background: isSel
-                        ? 'linear-gradient(180deg, oklch(0.35 0.08 188), oklch(0.22 0.05 192))'
-                        : 'var(--abyss-2)',
-                      border:`1px solid ${isSel ? 'var(--brass)' : 'var(--abyss-4)'}`,
-                      color: isSel ? 'var(--brass)' : 'var(--bone-dim)',
-                      fontFamily:'Cinzel, serif', fontSize:11, letterSpacing:'0.1em', textTransform:'uppercase',
-                      transition:'all 0.15s',
-                    }}>
-                    {a.label}
-                  </button>
-                );
-              })}
+            {/* Two-side lineup picker — both pools are W{width}, the shared width */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 1fr', gap:18, marginBottom:22 }}>
+
+              <TrainingLineupColumn
+                side={sides[0]} lineups={eligible} selectedId={sideAId}
+                onSelect={setSideAId} roster={roster} width={width} onForge={forge}/>
+
+              {/* center divider */}
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14 }}>
+                <div style={{ width:1, flex:1, background:'linear-gradient(180deg, transparent, var(--brass-deep), transparent)' }}/>
+                <div style={{ fontFamily:'Cinzel, serif', fontSize:28, color:'var(--brass)',
+                  textShadow:'0 0 14px oklch(0.72 0.11 80 / 0.4)' }}>vs</div>
+                <div style={{ width:1, flex:1, background:'linear-gradient(180deg, transparent, var(--brass-deep), transparent)' }}/>
+              </div>
+
+              <TrainingLineupColumn
+                side={sides[1]} lineups={eligible} selectedId={sideBId}
+                onSelect={setSideBId} roster={roster} width={width} onForge={forge}/>
             </div>
-          </ParamGroup>
-        </div>
 
-        {/* Two-side composer */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 1fr', gap:18, marginBottom:22 }}>
-
-          <SideComposer
-            title="Your Brood" subtitle="The hand you will play"
-            color="var(--bio)" colorDim="var(--bio-dim)" glyph="◈"
-            counts={playerSide} total={totalP} cap={capPerSide}
-            onBump={(k,d)=>bump('player', k, d)}/>
-
-          {/* center divider */}
-          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14 }}>
-            <div style={{ width:1, flex:1, background:'linear-gradient(180deg, transparent, var(--brass-deep), transparent)' }}/>
-            <div style={{ fontFamily:'Cinzel, serif', fontSize:28, color:'var(--brass)',
-              textShadow:'0 0 14px oklch(0.72 0.11 80 / 0.4)' }}>vs</div>
-            <div style={{ width:1, flex:1, background:'linear-gradient(180deg, transparent, var(--brass-deep), transparent)' }}/>
-          </div>
-
-          <SideComposer
-            title="Enemy Brood" subtitle="The shape of the test"
-            color="var(--coral)" colorDim="var(--coral-dim)" glyph="◣"
-            counts={enemySide} total={totalE} cap={capPerSide}
-            onBump={(k,d)=>bump('enemy', k, d)}/>
-        </div>
-
-        {/* Summary + launch */}
-        <div className="panel ornate" style={{ padding:'18px 24px', display:'flex',
-          alignItems:'center', gap:24 }}>
-          <div style={{ flex:1 }}>
-            <div className="caps" style={{ color:'var(--brass-dim)' }}>Sparring Configuration</div>
-            <div style={{ display:'flex', gap:18, marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:11,
-              color:'var(--bone)', letterSpacing:'0.1em' }}>
-              <span>BOARD {boardSize}×{boardSize}</span>
-              <span style={{ color:'var(--abyss-4)' }}>|</span>
-              <span>TURNS ≤ {turnLimit}</span>
-              <span style={{ color:'var(--abyss-4)' }}>|</span>
-              <span>AI {aiSkill.toUpperCase()}</span>
-              <span style={{ color:'var(--abyss-4)' }}>|</span>
-              <span style={{ color:'var(--bio)' }}>YOU {totalP}</span>
-              <span style={{ color:'var(--bone-dim)' }}>vs</span>
-              <span style={{ color:'var(--coral)' }}>FOE {totalE}</span>
+            {/* Summary + launch */}
+            <div className="panel ornate" style={{ padding:'18px 24px', display:'flex',
+              alignItems:'center', gap:24 }}>
+              <div style={{ flex:1 }}>
+                <div className="caps" style={{ color:'var(--brass-dim)' }}>Sparring Configuration</div>
+                <div style={{ display:'flex', gap:18, marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:11,
+                  color:'var(--bone)', letterSpacing:'0.1em', flexWrap:'wrap' }}>
+                  <span>{TRAINING_MODES.find(m=>m.id===mode).label.toUpperCase()}</span>
+                  <span style={{ color:'var(--abyss-4)' }}>|</span>
+                  <span>WIDTH {width}</span>
+                  <span style={{ color:'var(--abyss-4)' }}>|</span>
+                  <span>AI {aiSkill.toUpperCase()}</span>
+                  <span style={{ color:'var(--abyss-4)' }}>|</span>
+                  <span style={{ color:'var(--bio)' }}>{sideA ? sideA.name : '— none —'}</span>
+                  <span style={{ color:'var(--bone-dim)' }}>vs</span>
+                  <span style={{ color:'var(--coral)' }}>{sideB ? sideB.name : '— none —'}</span>
+                </div>
+              </div>
+              <button className="btn primary" onClick={loadLineup}
+                disabled={!canBegin}
+                style={{ padding:'14px 28px', fontSize:14 }}>
+                ▷ Load Lineup
+              </button>
             </div>
-          </div>
-          <button className="btn ghost sm" onClick={reset}>Reset</button>
-          <button className="btn primary" onClick={beginSparring}
-            disabled={totalP === 0 || totalE === 0}
-            style={{ padding:'14px 28px', fontSize:14 }}>
-            ▷ Begin Sparring
-          </button>
-        </div>
-        <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
-          letterSpacing:'0.15em', textAlign:'right' }}>
-          ‣ NO STAKES · NO CARRY-OVER
-        </div>
+            <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+              letterSpacing:'0.15em', textAlign:'right' }}>
+              ‣ OPENS SPARRING FIELD{!canBegin ? ' · ARRAY BOTH LINEUPS TO LOAD' : ''}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -944,80 +1000,148 @@ const ParamGroup = ({ label, children }) => (
   </div>
 );
 
-const SegPick = ({ value, onChange, options }) => (
-  <div style={{ display:'inline-flex', border:'1px solid var(--abyss-4)' }}>
-    {options.map((o,i) => {
-      const isSel = value === o.value;
-      return (
-        <button key={o.value} onClick={()=>onChange(o.value)} style={{
-          padding:'8px 14px',
-          background: isSel ? 'linear-gradient(180deg, oklch(0.35 0.08 188), oklch(0.22 0.05 192))' : 'var(--abyss-2)',
-          border:'none', cursor:'pointer',
-          color: isSel ? 'var(--brass)' : 'var(--bone-dim)',
-          fontFamily:'Cinzel, serif', fontSize:12, letterSpacing:'0.1em', textTransform:'uppercase',
-          borderRight: i < options.length-1 ? '1px solid var(--abyss-3)' : 'none',
-        }}>{o.label}</button>
-      );
-    })}
+// --- Mode card: PvP / P vs AI / AI vs AI selector tile.
+const TrainingModeCard = ({ mode, active, onClick }) => (
+  <button onClick={onClick}
+    style={{
+      padding:'16px 16px', cursor:'pointer', textAlign:'left',
+      background: active
+        ? 'linear-gradient(180deg, oklch(0.35 0.08 188), oklch(0.22 0.05 192))'
+        : 'linear-gradient(180deg, var(--abyss-2), var(--abyss-1))',
+      border:`1px solid ${active ? 'var(--brass)' : 'var(--abyss-4)'}`,
+      borderTop:`3px solid ${active ? 'var(--brass)' : 'var(--abyss-4)'}`,
+      color:'var(--bone)', transition:'all 0.16s',
+      boxShadow: active ? '0 0 22px oklch(0.78 0.14 188 / 0.22)' : 'var(--shadow-inset)',
+    }}>
+    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+      <span style={{ fontFamily:'Cinzel, serif', fontSize:26, color: active ? 'var(--brass)' : 'var(--bone-dim)',
+        textShadow: active ? '0 0 14px oklch(0.72 0.11 80 / 0.5)' : 'none' }}>{mode.glyph}</span>
+      <div>
+        <div style={{ fontFamily:'Cinzel, serif', fontSize:16, letterSpacing:'0.06em',
+          color: active ? 'var(--brass)' : 'var(--bone)' }}>{mode.label}</div>
+        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
+          letterSpacing:'0.22em', textTransform:'uppercase', marginTop:2 }}>{mode.tag}</div>
+      </div>
+    </div>
+    <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12.5, color:'var(--bone-dim)',
+      fontStyle:'italic', lineHeight:1.45 }}>{mode.blurb}</div>
+  </button>
+);
+
+// --- PvP placeholder: the duelling pit is not yet wired.
+const TrainingPvPPlaceholder = () => (
+  <div className="panel ornate" style={{ padding:'60px 40px', textAlign:'center',
+    display:'flex', flexDirection:'column', alignItems:'center', gap:14 }}>
+    <div style={{ fontFamily:'Cinzel, serif', fontSize:54, color:'var(--brass-deep)',
+      textShadow:'0 0 20px oklch(0.72 0.11 80 / 0.25)' }}>⚔</div>
+    <div style={{ fontFamily:'Cinzel, serif', fontSize:20, color:'var(--bone)', letterSpacing:'0.08em' }}>
+      Player versus Player
+    </div>
+    <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:15, fontStyle:'italic',
+      color:'var(--bone-dim)', maxWidth:520, lineHeight:1.6 }}>
+      The duelling pit is not yet open. Two sovereigns will one day share this board —
+      for now, sharpen yourself against the Reef-mind.
+    </div>
+    <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+      letterSpacing:'0.25em', textTransform:'uppercase', marginTop:4 }}>
+      ◇ Coming on a later tide
+    </div>
   </div>
 );
 
-const SideComposer = ({ title, subtitle, color, colorDim, glyph, counts, total, cap, onBump }) => (
-  <div style={{ padding:'18px 18px', background:'linear-gradient(180deg, var(--abyss-2), var(--abyss-1))',
-    border:`1px solid ${colorDim}`, borderTop:`3px solid ${color}` }}>
+// --- One side of the bout: a column of selectable lineups, all at the shared width.
+const TrainingLineupColumn = ({ side, lineups, selectedId, onSelect, roster, width, onForge }) => (
+  <div style={{ padding:'16px 16px', background:'linear-gradient(180deg, var(--abyss-2), var(--abyss-1))',
+    border:`1px solid ${side.colorDim}`, borderTop:`3px solid ${side.color}` }}>
     <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:14 }}>
       <div>
-        <div style={{ fontFamily:'Cinzel, serif', fontSize:18, color, letterSpacing:'0.08em',
+        <div style={{ fontFamily:'Cinzel, serif', fontSize:17, color:side.color, letterSpacing:'0.06em',
           display:'flex', alignItems:'center', gap:8 }}>
-          <span style={{ fontSize:22 }}>{glyph}</span>{title}
+          <span style={{ fontSize:21 }}>{side.glyph}</span>{side.title}
         </div>
         <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12, color:'var(--bone-dim)',
-          fontStyle:'italic', marginTop:2 }}>{subtitle}</div>
+          fontStyle:'italic', marginTop:2 }}>{side.subtitle}</div>
       </div>
-      <div style={{ textAlign:'right' }}>
-        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
-          letterSpacing:'0.2em' }}>SOULS</div>
-        <div style={{ fontFamily:'Cinzel, serif', fontSize:22, color: total>=cap?color:'var(--bone)',
-          letterSpacing:'0.05em' }}>
-          {total}<span style={{ fontSize:14, color:'var(--bone-dim)' }}> / {cap}</span>
-        </div>
-      </div>
+      <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+        letterSpacing:'0.2em' }}>W{width}</div>
     </div>
 
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:8 }}>
-      {TRAINING_PIECES.map(p => {
-        const n = counts[p.key] || 0;
-        const isSov = p.key === 'Q';
-        return (
-          <div key={p.key} style={{
-            padding:'10px 8px', background:'var(--abyss-0)', border:'1px solid var(--abyss-4)',
-            display:'flex', flexDirection:'column', alignItems:'center', gap:6,
-          }}>
-            <div style={{ fontFamily:'Cinzel, serif', fontSize:24, color: n>0 ? color : 'var(--bone-dim)',
-              textShadow: n>0 ? `0 0 10px ${color}66` : 'none' }}>{p.glyph}</div>
-            <div style={{ fontFamily:'Cinzel, serif', fontSize:10, color:'var(--bone)', letterSpacing:'0.05em' }}>
-              {p.name}
-            </div>
-            <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-              <button onClick={()=>onBump(p.key, -1)} disabled={n===0} style={pillBtn(color, n===0)}>−</button>
-              <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:13, color: n>0 ? color : 'var(--bone-dim)',
-                minWidth:18, textAlign:'center' }}>{n}</span>
-              <button onClick={()=>onBump(p.key, +1)}
-                disabled={total >= cap || (isSov && n >= 1)} style={pillBtn(color, total>=cap || (isSov && n>=1))}>+</button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    {lineups.length === 0 ? (
+      <div style={{ padding:'22px 14px', border:'1px dashed var(--abyss-4)',
+        background:'var(--abyss-1)', textAlign:'center' }}>
+        <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone-dim)',
+          fontStyle:'italic', lineHeight:1.5, marginBottom:12 }}>
+          No W{width} lineup has been arrayed.
+        </div>
+        <button className="btn primary" onClick={onForge}
+          style={{ width:'100%', justifyContent:'center', padding:'10px' }}>
+          + Forge W{width} Lineup
+        </button>
+        <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:9,
+          color:'var(--bone-dim)', letterSpacing:'0.15em' }}>
+          ‣ OPENS LINEUP TAB · W{width}
+        </div>
+      </div>
+    ) : (
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {lineups.map(ln => (
+          <LineupMiniCard key={ln.id} lineup={ln} roster={roster}
+            accent={side.color} selected={selectedId === ln.id}
+            onClick={()=>onSelect(ln.id)}/>
+        ))}
+        <button className="btn ghost sm" onClick={onForge}
+          style={{ marginTop:2, justifyContent:'center', padding:'8px' }}>
+          ✎ Forge / Edit W{width} Lineup
+        </button>
+      </div>
+    )}
   </div>
 );
 
-const pillBtn = (color, disabled) => ({
-  width:22, height:22, padding:0, background:'transparent',
-  border:`1px solid ${disabled ? 'var(--abyss-4)' : color}`,
-  color: disabled ? 'var(--bone-deep)' : color, cursor: disabled ? 'not-allowed' : 'pointer',
-  fontFamily:'JetBrains Mono, monospace', fontSize:14, lineHeight:1,
-});
+// --- Compact lineup card with a souls preview, mirroring the Assignment deck.
+const LineupMiniCard = ({ lineup, roster, accent, selected, onClick }) => {
+  const placed = Object.values(lineup.board || {}).filter(Boolean);
+  return (
+    <div onClick={onClick}
+      style={{
+        padding:'12px 14px', cursor:'pointer',
+        background: selected ? 'linear-gradient(90deg, var(--abyss-3), var(--abyss-2))' : 'var(--abyss-1)',
+        border:'1px solid', borderColor: selected ? accent : 'var(--abyss-3)',
+        borderLeft: selected ? `3px solid ${accent}` : '3px solid transparent',
+        transition:'all 0.15s',
+      }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
+        <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone)',
+          letterSpacing:'0.05em', display:'flex', alignItems:'center', gap:6 }}>
+          <span style={{ color:accent, fontSize:11 }}>◈</span>{lineup.name}
+        </div>
+        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:accent, letterSpacing:'0.18em' }}>
+          {placed.length} SOULS
+        </div>
+      </div>
+      <div style={{ display:'flex', gap:3, marginTop:8, flexWrap:'wrap' }}>
+        {placed.slice(0, 12).map((iid, i) => {
+          const fl = roster.find(x => x.instanceId === iid);
+          if (!fl) return null;
+          const a = FOLLOWER_ARCHETYPES[fl.archetype];
+          return (
+            <div key={i} title={fl.name} style={{
+              width:18, height:18, display:'grid', placeItems:'center',
+              background:'var(--abyss-0)', border:`1px solid ${a.color}`,
+              color:a.color, fontFamily:'Cinzel, serif', fontSize:11,
+            }}>{a.glyph}</div>
+          );
+        })}
+        {placed.length > 12 && (
+          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9,
+            color:'var(--bone-dim)', alignSelf:'center', marginLeft:4 }}>
+            +{placed.length - 12}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // =============================================================================
 // SHARED · ASSIGNMENT CARDS (unchanged from prior version)

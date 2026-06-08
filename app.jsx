@@ -96,6 +96,7 @@ const App = () => {
       {screen === 'op-lineup' && run && <ManageFollower run={run} setRun={setRun} go={setScreen} initialSubTab="lineup"/>}
       {screen === 'op-trader' && run && <Trader run={run} setRun={setRun} go={setScreen}/>}
       {screen === 'op-command' && run && <CommandChamber run={run} setRun={setRun} go={setScreen}/>}
+      {screen === 'training-board' && run && <SparringField run={run} setRun={setRun} go={setScreen}/>}
 
       {/* Mission — world map & battles */}
       {screen === 'map' && run && <WorldMap go={setScreen} run={run} setRun={setRun} openNode={openNode}/>}
@@ -120,6 +121,7 @@ const App = () => {
           <option value="op-follower">Op · Followers</option>
           <option value="op-trader">Op · Trader</option>
           <option value="op-command">Op · Command</option>
+          <option value="training-board">Training · Field</option>
           <option value="map">World Map</option>
           <option value="match">Match</option>
           <option value="gameover-win">Victory</option>
