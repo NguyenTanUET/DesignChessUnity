@@ -397,3 +397,33 @@ h1, h2, h3, h4, .serif { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, s
   background: radial-gradient(ellipse at 50% -20%, oklch(0.85 0.06 188 / 0.18), transparent 60%);
   z-index: 0;
 }
+
+/* =============================================================================
+   INTERACTION FEEDBACK — unified hover / active / focus states
+   Every <button> (including bespoke inline-styled ones) gets the same press
+   feel for free; clickable/draggable non-buttons opt in via .hoverable.
+   ========================================================================== */
+button {
+  transition: filter .12s ease, transform .12s ease, border-color .15s ease,
+              color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+button:not(:disabled) { cursor: pointer; }
+button:not(:disabled):hover { filter: brightness(1.15); }
+button:not(:disabled):active { filter: brightness(0.92); transform: translateY(1px); }
+button:disabled { cursor: not-allowed; }
+
+.hoverable { transition: filter .12s ease, transform .12s ease, border-color .15s ease; }
+.hoverable:hover { filter: brightness(1.16); }
+.hoverable:active { filter: brightness(0.94); transform: translateY(1px); }
+
+/* keyboard focus ring */
+button:focus-visible, .hoverable:focus-visible, select:focus-visible {
+  outline: 1px dashed var(--bio); outline-offset: 2px;
+}
+
+/* board squares respond faintly under the cursor */
+.sq { transition: filter .1s ease; }
+.sq:hover { filter: brightness(1.08); }
+
+/* sub-tab content entrance — pair with key={tab} to replay on switch */
+.tab-in { animation: screenIn 0.22s ease; }

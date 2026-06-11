@@ -13,7 +13,7 @@ const CommandChamber = ({ run, setRun, go }) => {
       <OpTopBar run={run} setRun={setRun} go={go} current="op-command" subtitle="Command Chamber · War-Map & Orders"/>
       <CommandSubNav active={subTab} onChange={setSubTab}/>
 
-      <div style={{ position:'absolute', top:108, left:0, right:0, bottom:0 }}>
+      <div key={subTab} className="tab-in" style={{ position:'absolute', top:108, left:0, right:0, bottom:0 }}>
         {subTab === 'assignment' && <AssignmentPanel run={run} setRun={setRun} go={go}/>}
         {subTab === 'reflection' && <ReflectionPanel run={run} setRun={setRun} go={go}/>}
         {subTab === 'portal'     && <PortalPanel     run={run} setRun={setRun} go={go}/>}
@@ -251,7 +251,7 @@ const AssignmentPanel = ({ run, setRun, go }) => {
               const sel = selectedLineupId === ln.id;
               const accent = formations.find(f=>f.w===requiredWidth)?.color || assignment.palette.accent;
               return (
-                <div key={ln.id} onClick={()=>setSelectedLineupId(ln.id)}
+                <div key={ln.id} className="hoverable" onClick={()=>setSelectedLineupId(ln.id)}
                   style={{
                     padding:'12px 14px', cursor:'pointer',
                     background: sel ? 'linear-gradient(90deg, var(--abyss-3), var(--abyss-2))' : 'var(--abyss-1)',
@@ -1102,7 +1102,7 @@ const TrainingLineupColumn = ({ side, lineups, selectedId, onSelect, roster, wid
 const LineupMiniCard = ({ lineup, roster, accent, selected, onClick }) => {
   const placed = Object.values(lineup.board || {}).filter(Boolean);
   return (
-    <div onClick={onClick}
+    <div className="hoverable" onClick={onClick}
       style={{
         padding:'12px 14px', cursor:'pointer',
         background: selected ? 'linear-gradient(90deg, var(--abyss-3), var(--abyss-2))' : 'var(--abyss-1)',

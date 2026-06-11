@@ -36,6 +36,7 @@ const SparringField = ({ run, setRun, go }) => {
   const [dragInfo,    setDragInfo]    = React.useState(null); // { instanceId, side } while dragging a piece
   const [infoId,      setInfoId]      = React.useState(null);  // instanceId for the Unit Info popup
   const [relicPicker, setRelicPicker] = React.useState(null);  // 'A' | 'B' — which side's relic to choose
+  window.useEscClose(() => { setInfoId(null); setRelicPicker(null); setDragInfo(null); });
 
   // Map a lineup's 2-rank board (r0=back, r1=front) onto absolute rows of the
   // full W×W board. 'bottom' anchors the back rank to the last row; 'top'
@@ -262,7 +263,7 @@ const SparringField = ({ run, setRun, go }) => {
 
             <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:420, overflowY:'auto' }}>
               {/* clear option */}
-              <div onClick={()=>{ setSideRelic(relicPicker, null); setRelicPicker(null); }}
+              <div className="hoverable" onClick={()=>{ setSideRelic(relicPicker, null); setRelicPicker(null); }}
                 style={{ padding:'10px 12px', cursor:'pointer', background:'var(--abyss-1)',
                   border:'1px solid var(--abyss-3)', display:'flex', alignItems:'center', gap:10 }}>
                 <div style={{ width:28, textAlign:'center', color:'var(--bone-dim)', fontSize:18 }}>∅</div>
@@ -286,7 +287,7 @@ const SparringField = ({ run, setRun, go }) => {
                   const lineup = relicPicker === 'A' ? lineupA : lineupB;
                   const isOn = lineup.carryRelicId === rel.id;
                   return (
-                    <div key={rel.id}
+                    <div key={rel.id} className="hoverable"
                       onClick={()=>{ setSideRelic(relicPicker, rel.id); setRelicPicker(null); }}
                       style={{
                         padding:'10px 12px', cursor:'pointer',
@@ -518,7 +519,7 @@ const OnFieldList = ({ side, sideKey, lineup, roster, draggingId, onDragStart, o
           const rank = m ? (m[1] === '0' ? 'BACK' : 'FRONT') : '';
           const col = m ? `C${parseInt(m[2],10)+1}` : '';
           return (
-            <div key={sqId}
+            <div key={sqId} className="hoverable"
               draggable
               onDragStart={(e)=>{ e.dataTransfer.setData('text/plain', instId);
                 e.dataTransfer.effectAllowed = 'move'; onDragStart(instId); }}

@@ -53,6 +53,7 @@ const ItemTab = ({ run, setRun, sel, arch }) => {
 // Browse all augmentations (in-hold + grafted). Each aug shows status + equip/unequip action.
 const AugmentationSection = ({ run, setRun }) => {
   const [equipPickerAug, setEquipPickerAug] = React.useState(null); // augId being fitted
+  window.useEscClose(() => setEquipPickerAug(null));
   const [filter, setFilter] = React.useState('all'); // all | equipped | unequipped
   const augInventory = run.augInventory || [];
   const roster = run.roster || [];

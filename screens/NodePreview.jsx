@@ -1,6 +1,7 @@
 // Node preview — the Hunt Ahead
 const NodePreview = ({ node, run, onClose, onEnter }) => {
   if (!node) return null;
+  window.useEscClose(onClose);
 
   const pool = node.type === 'boss' ? ENEMIES.boss : node.type === 'elite' ? ENEMIES.elite : ENEMIES.combat;
   const enemy = React.useMemo(() => {

@@ -124,6 +124,7 @@ const MainMenu = ({ go, setRun }) => {
         <div style={{ display:'flex', flexDirection:'column', gap:10, width:340, margin:'0 auto' }}>
           {[
             { id:'new', label:'Start Game', kind:'primary', onClick: spawnNewBrood },
+            { id:'forge', label:'Level Forge', kind:'ghost', onClick: ()=>go('level-forge') },
             { id:'opts', label:'Settings', kind:'ghost', onClick: ()=>go('settings') },
             { id:'credit', label:'Credits', kind:'ghost' },
             { id:'exit', label:'Exit', kind:'ghost' },

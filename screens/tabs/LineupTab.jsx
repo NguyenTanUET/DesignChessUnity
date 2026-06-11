@@ -333,7 +333,7 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
           </button>
         </div>
       ) : (
-        <div style={{ flex:1, minHeight:0, display:'grid',
+        <div key={`${width}-${selIdx}`} className="tab-in" style={{ flex:1, minHeight:0, display:'grid',
           gridTemplateColumns:'260px 1fr 540px', gap:14, padding:'24px 28px',
           overflow:'hidden' }}>
           {/* === DEPLOYED ROSTER (left of board) === */}
@@ -787,7 +787,7 @@ const BenchPanelFollowers = ({
       {benchFollowers.map(f => {
         const a = FOLLOWER_ARCHETYPES[f.archetype];
         return (
-          <div key={f.instanceId}
+          <div key={f.instanceId} className="hoverable"
             draggable
             onDragStart={e => {
               e.dataTransfer.setData('text/plain', f.instanceId);
@@ -974,6 +974,7 @@ const BenchPicker = ({
   initialSelected, onAccept, onCancel, single,
 }) => {
   const [selected, setSelected] = React.useState(new Set(initialSelected));
+  window.useEscClose(onCancel);
   const toggle = (id) => {
     setSelected(prev => {
       // Single-select: clicking an item replaces the selection (or clears it if already selected).
@@ -1075,7 +1076,7 @@ const BenchPicker = ({
           {rows.map(row => {
             const isOn = selected.has(row.id);
             return (
-              <div key={row.id} onClick={()=>toggle(row.id)}
+              <div key={row.id} className="hoverable" onClick={()=>toggle(row.id)}
                 style={{
                   display:'flex', alignItems:'center', gap:12, padding:'10px 12px',
                   background: isOn

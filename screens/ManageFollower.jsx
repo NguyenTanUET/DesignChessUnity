@@ -41,7 +41,7 @@ const ManageFollower = ({ run, setRun, go, initialSubTab }) => {
         )}
 
         {/* === CENTER: sub-tab content === */}
-        <div style={{ position:'relative', overflowY:'auto' }}>
+        <div key={subTab} className="tab-in" style={{ position:'relative', overflowY:'auto' }}>
           {subTab === 'unit-info' && sel && arch && (
             <UnitInfoTab run={run} setRun={setRun} sel={sel} arch={arch} go={go} togglePool={togglePool} setSubTab={setSubTab}/>
           )}

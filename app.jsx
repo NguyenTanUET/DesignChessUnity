@@ -1,6 +1,16 @@
 // App shell — screen router, run state, tweaks
 const { useState, useEffect } = React;
 
+// Shared hook — close any overlay on Escape. Defined on window so screen files
+// (loaded before this one) can call it at render time.
+window.useEscClose = (onClose) => {
+  React.useEffect(() => {
+    const h = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+};
+
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "boardSize": 8
 }/*EDITMODE-END*/;
@@ -89,6 +99,7 @@ const App = () => {
   return (
     <div style={{ position:'absolute', inset:0 }}>
       {screen === 'menu' && <MainMenu go={setScreen} setRun={setRun}/>}
+      {screen === 'level-forge' && <LevelForge go={setScreen}/>}
 
       {/* Operation Center suite */}
       {screen === 'op-hub' && run && <OperationCenter run={run} setRun={setRun} go={setScreen}/>}
@@ -117,6 +128,7 @@ const App = () => {
         <select value={screen} onChange={e=>setScreen(e.target.value)}
           style={{ background:'#000', color:'var(--bone-dim)', border:'1px solid var(--abyss-4)', fontSize:10, padding:'2px 6px', fontFamily:'JetBrains Mono, monospace' }}>
           <option value="menu">Menu</option>
+          <option value="level-forge">Level Forge</option>
           <option value="op-hub">Op · Hub</option>
           <option value="op-follower">Op · Followers</option>
           <option value="op-trader">Op · Trader</option>

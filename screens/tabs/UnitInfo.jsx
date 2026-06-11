@@ -3,6 +3,7 @@ const UnitInfoTab = ({ run, setRun, sel, arch, go, togglePool, setSubTab }) => {
   const evoData = EVOLUTION[sel.archetype][sel.evoTier];
   const slotCount = sel.augSlotCount ?? 5;
   const [augPickerSlot, setAugPickerSlot] = React.useState(null);
+  window.useEscClose(() => setAugPickerSlot(null));
 
   // Compute which slots are grown (same hash as AugSlotMap)
   const grownIdx = React.useMemo(() => {
