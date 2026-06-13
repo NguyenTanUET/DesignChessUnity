@@ -434,50 +434,45 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
             </div>
           </div>
 
-          {/* === BENCH (right, narrow, fills to right edge) === */}
+          {/* === SUPPORT SQUAD (right) — followers + augments + relics, one group
+              riding along with this plan === */}
           <div style={{
-            display:'grid', gridTemplateColumns:'1fr 1fr',
-            gridTemplateRows:'1fr', gap:10,
+            display:'flex', flexDirection:'column', gap:10,
             background:'linear-gradient(180deg, var(--abyss-1), var(--abyss-0))',
             border:'1px solid var(--abyss-3)', padding:'12px',
             overflow:'hidden', minHeight:0,
           }}>
-            {/* Augments + Relics */}
-            <div style={{ display:'flex', flexDirection:'column', gap:12, overflowY:'auto', minHeight:0 }}>
-              <div>
-                <div className="caps" style={{ marginBottom:4 }}>Loadout</div>
-                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
-                  letterSpacing:'0.2em' }}>
-                  AUG + RELIC
-                </div>
+            <div>
+              <div className="caps" style={{ marginBottom:4 }}>Support Squad</div>
+              <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+                letterSpacing:'0.2em' }}>
+                FOLLOWERS · AUG · RELIC — RIDES WITH THIS PLAN
               </div>
-              <BenchPanelSide
-                inline
-                sections={[
-                  { kind:'augment', title:'Augmentations', glyph:'⊕',
-                    accent:'oklch(0.7 0.13 195)', items:benchAugs,
-                    onAdd:()=>setPickerKind('augment'),
-                    emptyHint:'No augmentations benched.' },
-                  { kind:'relic', title:'Relics', glyph:'✠',
-                    accent:'var(--brass)', items:benchRelics,
-                    onAdd:()=>setPickerKind('relic'),
-                    emptyHint:'No relics benched.' },
-                ]}
-                onRemove={removeFromBench}
-              />
             </div>
 
-            {/* Bench (followers riding along with this lineup) */}
-            <div style={{ display:'flex', flexDirection:'column', gap:10,
-              borderLeft:'1px solid var(--abyss-3)', paddingLeft:10, minHeight:0 }}>
-              <div>
-                <div className="caps" style={{ marginBottom:4 }}>Bench</div>
-                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
-                  letterSpacing:'0.2em' }}>
-                  DRAG TO DEPLOY
-                </div>
+            <div style={{ flex:1, minHeight:0, display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              {/* Augments + Relics */}
+              <div style={{ display:'flex', flexDirection:'column', gap:12, overflowY:'auto', minHeight:0 }}>
+                <BenchPanelSide
+                  inline
+                  sections={[
+                    { kind:'augment', title:'Augmentations', glyph:'⊕',
+                      accent:'oklch(0.7 0.13 195)', items:benchAugs,
+                      onAdd:()=>setPickerKind('augment'),
+                      emptyHint:'No augmentations in the squad.' },
+                    { kind:'relic', title:'Relics', glyph:'✠',
+                      accent:'var(--brass)', items:benchRelics,
+                      onAdd:()=>setPickerKind('relic'),
+                      emptyHint:'No relics in the squad.' },
+                  ]}
+                  onRemove={removeFromBench}
+                />
               </div>
-              <BenchPanelFollowers
+
+              {/* Followers (drag to deploy) */}
+              <div style={{ display:'flex', flexDirection:'column', gap:10,
+                borderLeft:'1px solid var(--abyss-3)', paddingLeft:10, minHeight:0 }}>
+                <BenchPanelFollowers
                 inline
                 color={active.color}
                 benchFollowers={benchFollowers}
@@ -493,6 +488,7 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
                   setDragId(null);
                 }}
               />
+              </div>
             </div>
           </div>
         </div>
