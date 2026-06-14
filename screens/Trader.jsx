@@ -1,9 +1,16 @@
 // Trader's Hold — 3 categories: Followers, Relics, Augmentations
 const Trader = ({ run, setRun, go }) => {
   const [cat, setCat] = React.useState('followers'); // followers | relics | augmentations
+  const [pending, setPending] = React.useState(null); // { cat, item } awaiting buy confirmation
 
   const res = run.res || {};
   const purchased = run.traderPurchased || {}; // { itemId: true }
+
+  // Item display name, for the confirmation prompt.
+  const itemName = (c, item) =>
+    c === 'followers' ? FOLLOWER_ARCHETYPES[item.archetype]?.name : item.name;
+  const costLine = (cost) => Object.entries(cost || {})
+    .map(([k,v]) => `${v} ${k}`).join(' · ');
 
   const canAfford = (cost) => {
     return (cost.coral||0) <= (res.coral||0)
@@ -127,12 +134,22 @@ const Trader = ({ run, setRun, go }) => {
                 purchased={!!purchased[item.id]}
                 affordable={canAfford(item.cost || {})}
                 res={res}
-                onBuy={()=>buy(cat, item)}
+                onBuy={()=>setPending({ cat, item })}
                 accent={tabs.find(t=>t.id===cat).color}/>
             ))}
           </div>
         </div>
       </div>
+
+      {pending && (
+        <ConfirmDialog
+          title={`Acquire ${itemName(pending.cat, pending.item)}?`}
+          message={<>This will spend <b style={{ color:'var(--brass)' }}>{costLine(pending.item.cost)}</b>. All
+            sales are final — the trader does not take back what the deep has touched.</>}
+          confirmLabel="◎ Acquire"
+          onConfirm={()=>buy(pending.cat, pending.item)}
+          onClose={()=>setPending(null)}/>
+      )}
     </div>
   );
 };

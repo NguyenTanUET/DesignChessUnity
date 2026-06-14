@@ -145,6 +145,8 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
   const [dragId, setDragId] = React.useState(null);
   // Picker modal state — which kind ('follower'|'augment'|'relic'|null)
   const [pickerKind, setPickerKind] = React.useState(null);
+  // Delete confirmation for the current lineup
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
 
   const setBenchKey = (key, ids) => updateCurrent(() => ({ [key]: ids }));
 
@@ -311,7 +313,7 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
               setRenameDraft(current.name);
             }} title="Rename">✎ Rename</button>
             <button className="btn ghost sm" onClick={duplicateLineup} title="Duplicate">⧉ Duplicate</button>
-            <button className="btn ghost sm" onClick={deleteLineup}
+            <button className="btn ghost sm" onClick={()=>setConfirmDelete(true)}
               title={lineupsForWidth.length<=1?'Clear board (last lineup)':'Delete this lineup'}
               style={{ color: lineupsForWidth.length<=1 ? 'var(--bone-dim)' : 'oklch(0.7 0.15 25)' }}>
               {lineupsForWidth.length<=1 ? '✕ Clear' : '✕ Delete'}
@@ -493,6 +495,22 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
           </div>
         </div>
       )}
+
+      {/* === DELETE / CLEAR CONFIRMATION === */}
+      {confirmDelete && current && (() => {
+        const isLast = lineupsForWidth.length <= 1;
+        return (
+          <ConfirmDialog
+            danger
+            title={isLast ? `Clear “${current.name}”?` : `Delete “${current.name}”?`}
+            message={isLast
+              ? 'This is the only plan at this width — its board will be wiped clean. This cannot be undone.'
+              : 'This lineup and everything arrayed on it will be lost. This cannot be undone.'}
+            confirmLabel={isLast ? '✕ Clear Board' : '✕ Delete Lineup'}
+            onConfirm={deleteLineup}
+            onClose={()=>setConfirmDelete(false)}/>
+        );
+      })()}
 
       {/* === BENCH PICKER MODAL === */}
       {pickerKind && current && (

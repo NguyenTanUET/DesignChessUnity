@@ -1,5 +1,39 @@
 // Shared follower components used across all 4 sub-tabs
 
+// =============================================================================
+// CONFIRM DIALOG — shared yes/no modal. Render conditionally:
+//   {confirm && <ConfirmDialog {...confirm} onClose={()=>setConfirm(null)}/>}
+// Props: title, message, confirmLabel, danger (bool), onConfirm, onClose.
+// =============================================================================
+const ConfirmDialog = ({ title, message, confirmLabel, cancelLabel, danger, onConfirm, onClose }) => {
+  if (window.useEscClose) window.useEscClose(onClose);
+  const accent = danger ? 'oklch(0.7 0.16 25)' : 'var(--brass)';
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()} style={{ maxWidth:440 }}>
+        <div className="eyebrow" style={{ color: accent }}>
+          {danger ? '◣ Confirm' : '◈ Confirm'}
+        </div>
+        <h2 style={{ margin:'6px 0 8px', fontSize:22, fontFamily:'Cinzel, serif', color:'var(--bone)' }}>
+          {title}
+        </h2>
+        <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:14, color:'var(--bone-dim)',
+          lineHeight:1.6 }}>
+          {message}
+        </div>
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:20 }}>
+          <button className="btn ghost sm" onClick={onClose}>{cancelLabel || 'Cancel'}</button>
+          <button className="btn sm" onClick={()=>{ onConfirm(); onClose(); }}
+            style={{ border:`1px solid ${accent}`, color: accent, padding:'6px 16px' }}>
+            {confirmLabel || 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+window.ConfirmDialog = ConfirmDialog;
+
 const Stat2 = ({label, value}) => (
   <div>
     <div style={{ color:'var(--brass-dim)', textTransform:'uppercase', fontSize:8, letterSpacing:'0.2em' }}>{label}</div>
