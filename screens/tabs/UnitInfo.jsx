@@ -2,8 +2,9 @@
 const UnitInfoTab = ({ run, setRun, sel, arch, go, togglePool, setSubTab }) => {
   const evoData = EVOLUTION[sel.archetype][sel.evoTier];
   const slotCount = sel.augSlotCount ?? 5;
-  const [augPickerSlot, setAugPickerSlot] = React.useState(null);
-  window.useEscClose(() => setAugPickerSlot(null));
+  const [augPickerSlot, setAugPickerSlot] = React.useState(null); // slot whose picker is open
+  const [viewSlot, setViewSlot] = React.useState(null);           // installed slot whose info is open
+  window.useEscClose(() => { setAugPickerSlot(null); setViewSlot(null); });
 
   // Compute which slots are grown (same hash as AugSlotMap)
   const grownIdx = React.useMemo(() => {
@@ -131,8 +132,8 @@ const UnitInfoTab = ({ run, setRun, sel, arch, go, togglePool, setSubTab }) => {
         </div>
 
         <AugSlotMap follower={sel} slotCount={slotCount} grownIdx={grownIdx}
-          onSlotClick={(slotId) => setAugPickerSlot(slotId)}
-          onSlotRemove={(slotId) => removeAug(slotId)}/>
+          onSlotPick={(slotId) => setAugPickerSlot(slotId)}
+          onSlotView={(slotId) => setViewSlot(slotId)}/>
 
         {slotCount === 0 && (
           <div style={{ marginTop:14, padding:'10px 14px', background:'oklch(0.18 0.05 30 / 0.4)',
@@ -226,12 +227,57 @@ const UnitInfoTab = ({ run, setRun, sel, arch, go, togglePool, setSubTab }) => {
           </div>
         </div>
       )}
+
+      {/* === INSTALLED AUG INFO MODAL === */}
+      {viewSlot && (() => {
+        const slot = AUG_SLOTS.find(s => s.id === viewSlot);
+        const aug = AUGMENTATIONS.find(a => a.id === sel?.augments?.[viewSlot]);
+        if (!slot || !aug) return null;
+        return (
+          <div className="modal-backdrop" onClick={()=>setViewSlot(null)}>
+            <div className="modal" onClick={e=>e.stopPropagation()} style={{ maxWidth:460 }}>
+              <div className="eyebrow" style={{ color:slot.color }}>{slot.glyph} · {slot.label} Port · Installed</div>
+              <h2 style={{ margin:'6px 0 4px', fontSize:24, fontFamily:'Cinzel, serif', color:'var(--bone)' }}>
+                {aug.name}
+              </h2>
+              <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bio-dim)',
+                letterSpacing:'0.2em', marginBottom:12, textTransform:'uppercase' }}>
+                Tier {aug.tier} · {slot.label} Graft
+              </div>
+
+              <div style={{ padding:'14px 16px', background:'var(--abyss-1)', border:'1px solid var(--abyss-3)',
+                borderLeft:`3px solid ${slot.color}` }}>
+                <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:14, color:'var(--bone)',
+                  fontStyle:'italic', lineHeight:1.6 }}>
+                  {aug.effect}
+                </div>
+              </div>
+              <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12.5, color:'var(--bone-dim)',
+                fontStyle:'italic', marginTop:10, lineHeight:1.5 }}>
+                {slot.desc}
+              </div>
+
+              <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:20 }}>
+                <button className="btn ghost sm" onClick={()=>setViewSlot(null)}>Close</button>
+                <button className="btn sm" onClick={()=>{ const s = viewSlot; setViewSlot(null); setAugPickerSlot(s); }}
+                  style={{ border:`1px solid ${slot.color}`, color:slot.color, padding:'6px 16px' }}>
+                  ⇄ Change
+                </button>
+                <button className="btn sm" onClick={()=>{ removeAug(viewSlot); setViewSlot(null); }}
+                  style={{ border:'1px solid oklch(0.7 0.16 25)', color:'oklch(0.75 0.16 25)', padding:'6px 16px' }}>
+                  ⌫ Unequip
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
 
 // === Aug slot map: clickable diagram of which of the 5 ports this specimen grew ===
-const AugSlotMap = ({ follower, slotCount, grownIdx, onSlotClick, onSlotRemove }) => {
+const AugSlotMap = ({ follower, slotCount, grownIdx, onSlotPick, onSlotView }) => {
   return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:8 }}>
       {AUG_SLOTS.map((slot, i) => {
@@ -241,9 +287,10 @@ const AugSlotMap = ({ follower, slotCount, grownIdx, onSlotClick, onSlotRemove }
         const aug = installed ? AUGMENTATIONS.find(a => a.id === installedId) : null;
         const clickable = grown;
 
+        // Empty grown port → open the picker. Installed port → open its info card.
         const handleClick = () => {
           if (!clickable) return;
-          onSlotClick(slot.id);
+          if (installed) onSlotView(slot.id); else onSlotPick(slot.id);
         };
 
         return (
@@ -288,16 +335,8 @@ const AugSlotMap = ({ follower, slotCount, grownIdx, onSlotClick, onSlotRemove }
             )}
             <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, color: grown ? 'var(--bio-dim)' : 'var(--bone-dim)',
               letterSpacing:'0.18em', marginTop:3 }}>
-              {grown ? (installed ? '◆ INSTALLED' : '○ CLICK TO FIT') : '— SEALED'}
+              {grown ? (installed ? '◆ VIEW · EDIT' : '○ CLICK TO FIT') : '— SEALED'}
             </div>
-            {installed && (
-              <button onClick={e=>{ e.stopPropagation(); onSlotRemove(slot.id); }}
-                style={{ position:'absolute', top:2, right:4, border:'none', background:'transparent',
-                  color:'var(--bone-dim)', cursor:'pointer', fontSize:13, padding:'0 4px', lineHeight:1 }}
-                title="Remove augmentation"
-                onMouseEnter={e=>e.currentTarget.style.color='oklch(0.75 0.16 25)'}
-                onMouseLeave={e=>e.currentTarget.style.color='var(--bone-dim)'}>×</button>
-            )}
           </div>
         );
       })}

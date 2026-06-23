@@ -108,6 +108,7 @@ const App = () => {
       {screen === 'op-trader' && run && <Trader run={run} setRun={setRun} go={setScreen}/>}
       {screen === 'op-command' && run && <CommandChamber run={run} setRun={setRun} go={setScreen}/>}
       {screen === 'training-board' && run && <SparringField run={run} setRun={setRun} go={setScreen}/>}
+      {screen === 'pvp-setup' && run && <PvPSetup run={run} setRun={setRun} go={setScreen}/>}
 
       {/* Mission — world map & battles */}
       {screen === 'map' && run && <WorldMap go={setScreen} run={run} setRun={setRun} openNode={openNode}/>}

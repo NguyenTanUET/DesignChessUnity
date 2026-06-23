@@ -489,9 +489,24 @@ const ReflectMeta = ({ k, v }) => (
 // PANEL 3 · PORTAL — online matchmaking UI
 // =============================================================================
 const PortalPanel = ({ run, setRun, go }) => {
-  const [mode, setMode] = React.useState('ranked'); // 'ranked' | 'casual' | 'friend'
+  const [mode, setMode] = React.useState('ranked'); // 'ranked' | 'casual' | 'friend' | 'host'
   const [searching, setSearching] = React.useState(false);
   const [waitSec, setWaitSec] = React.useState(0);
+
+  // Host-a-room config + the created room (scaffolding — no live networking yet).
+  const [hostCfg, setHostCfg] = React.useState({ mapW:8, lineupW:6, ranked:false, timer:45, visibility:'public' });
+  const [room, setRoom] = React.useState(null);
+  const setCfg = (k, v) => setHostCfg(c => ({ ...c, [k]: v }));
+  const createRoom = () => {
+    const code = 'GOK-' + Math.random().toString(36).slice(2,6).toUpperCase();
+    const r = { code, ...hostCfg };
+    setRoom(r);
+    setRun(prev => ({ ...prev, portalRoom: r }));
+  };
+  const closeRoom = () => {
+    setRoom(null);
+    setRun(prev => { const { portalRoom, ...rest } = prev; return rest; });
+  };
 
   // mock connection
   const onlineCount = 1287;
@@ -523,6 +538,7 @@ const PortalPanel = ({ run, setRun, go }) => {
     { id:'ranked', label:'Ranked Tide',  glyph:'✠', desc:'ELO-tracked. Affects your standing.' },
     { id:'casual', label:'Casual Hunt',  glyph:'◐', desc:'Untracked. For practice and play.' },
     { id:'friend', label:'Friend Bout',  glyph:'◈', desc:'Private match by invite code.' },
+    { id:'host',   label:'Create Room',  glyph:'⌂', desc:'Host a board — set map & formation rules.' },
   ];
 
   return (
@@ -599,7 +615,7 @@ const PortalPanel = ({ run, setRun, go }) => {
         </div>
 
         {/* mode toggle */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10, marginBottom:22 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:10, marginBottom:22 }}>
           {modes.map(m => {
             const isSel = mode === m.id;
             return (
@@ -629,6 +645,8 @@ const PortalPanel = ({ run, setRun, go }) => {
           })}
         </div>
 
+        {/* ── matchmaking queue (ranked / casual / friend) ── */}
+        {mode !== 'host' && (<>
         {/* invite code box for friend mode */}
         {mode === 'friend' && (
           <div style={{ padding:'14px 16px', background:'var(--abyss-1)', border:'1px solid var(--abyss-3)',
@@ -692,6 +710,112 @@ const PortalPanel = ({ run, setRun, go }) => {
             )}
           </div>
         </div>
+        </>)}
+
+        {/* ── create-a-room (host) ── */}
+        {mode === 'host' && (
+          <div style={{ flex:1, display:'flex', flexDirection:'column' }}>
+            {!room ? (
+              <>
+                <div className="caps" style={{ marginBottom:10 }}>Room Settings</div>
+                <div style={{ background:'var(--abyss-1)', border:'1px solid var(--abyss-3)',
+                  padding:'16px 18px', display:'flex', flexDirection:'column', gap:14 }}>
+                  <PortalOptRow label="Map Size" hint="The board both broods fight on.">
+                    <PortalSeg value={hostCfg.mapW} onChange={v=>setCfg('mapW', v)}
+                      options={[{v:6,l:'6×6'},{v:8,l:'8×8'},{v:10,l:'10×10'}]}/>
+                  </PortalOptRow>
+                  <PortalOptRow label="Formation Width" hint="Lineup width each side must bring.">
+                    <PortalSeg value={hostCfg.lineupW} onChange={v=>setCfg('lineupW', v)}
+                      options={[{v:4,l:'W4'},{v:6,l:'W6'},{v:8,l:'W8'},{v:10,l:'W10'}]}/>
+                  </PortalOptRow>
+                  <PortalOptRow label="Match Type" hint="Ranked moves ELO; casual does not.">
+                    <PortalSeg value={hostCfg.ranked} onChange={v=>setCfg('ranked', v)}
+                      options={[{v:false,l:'Casual'},{v:true,l:'Ranked'}]}/>
+                  </PortalOptRow>
+                  <PortalOptRow label="Turn Timer" hint="Seconds per move, or none.">
+                    <div style={{ display:'flex', alignItems:'center', gap:12, minWidth:180 }}>
+                      <input type="range" min={0} max={120} step={15} value={hostCfg.timer}
+                        onChange={e=>setCfg('timer', Number(e.target.value))}
+                        title="Turn timer" style={{ flex:1, accentColor:'var(--bio)' }}/>
+                      <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:12, color:'var(--brass)',
+                        minWidth:42, textAlign:'right' }}>{hostCfg.timer === 0 ? 'OFF' : `${hostCfg.timer}s`}</span>
+                    </div>
+                  </PortalOptRow>
+                  <PortalOptRow label="Visibility" hint="Public is listed; private needs the code.">
+                    <PortalSeg value={hostCfg.visibility} onChange={v=>setCfg('visibility', v)}
+                      options={[{v:'public',l:'Public'},{v:'private',l:'Private'}]}/>
+                  </PortalOptRow>
+                </div>
+                <button className="btn primary" onClick={createRoom}
+                  style={{ marginTop:18, justifyContent:'center', padding:'14px', fontSize:14 }}>
+                  ⌂ Open the Room
+                </button>
+                <div style={{ marginTop:8, fontFamily:'JetBrains Mono, monospace', fontSize:9,
+                  color:'var(--bone-dim)', letterSpacing:'0.15em', textAlign:'center' }}>
+                  ‣ A DISTANT SOVEREIGN MAY ANSWER
+                </div>
+              </>
+            ) : (
+              <div style={{ flex:1, display:'flex', flexDirection:'column', gap:14 }}>
+                {/* room code */}
+                <div style={{ textAlign:'center', padding:'22px 18px',
+                  background:'linear-gradient(180deg, oklch(0.32 0.07 188 / 0.45), transparent)',
+                  border:'1px solid var(--bio-dim)' }}>
+                  <div className="eyebrow" style={{ color:'var(--bio-dim)' }}>Room Open · Awaiting Challenger</div>
+                  <div style={{ fontFamily:'Cinzel, serif', fontSize:36, color:'var(--brass)', letterSpacing:'0.14em',
+                    marginTop:6, textShadow:'0 0 18px oklch(0.72 0.11 80 / 0.45)' }}>{room.code}</div>
+                  <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+                    letterSpacing:'0.2em', marginTop:6, textTransform:'uppercase' }}>
+                    {room.visibility === 'private' ? '🔒 Private · share this code' : '◉ Public · listed on the tide-bridge'}
+                  </div>
+                </div>
+
+                {/* seats */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 40px 1fr', gap:10, alignItems:'center' }}>
+                  <div style={{ padding:'14px', textAlign:'center', background:'var(--abyss-1)',
+                    border:'1px solid var(--bio-dim)', borderTop:'3px solid var(--bio)' }}>
+                    <div style={{ fontFamily:'Cinzel, serif', fontSize:28, color:'var(--bio)' }}>◈</div>
+                    <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone)', marginTop:4 }}>
+                      {run.cls?.name || 'You'}
+                    </div>
+                    <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, color:'var(--bio-dim)',
+                      letterSpacing:'0.2em', marginTop:3 }}>HOST · READY</div>
+                  </div>
+                  <div style={{ fontFamily:'Cinzel, serif', fontSize:20, color:'var(--brass)', textAlign:'center' }}>vs</div>
+                  <div style={{ padding:'14px', textAlign:'center', background:'var(--abyss-1)',
+                    border:'1px dashed var(--abyss-4)' }}>
+                    <div style={{ fontFamily:'Cinzel, serif', fontSize:28, color:'var(--bone-dim)' }}>◌</div>
+                    <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, fontStyle:'italic',
+                      color:'var(--bone-dim)', marginTop:4 }}>Empty seat</div>
+                    <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, color:'var(--bone-dim)',
+                      letterSpacing:'0.2em', marginTop:3 }}>SEEKING…</div>
+                  </div>
+                </div>
+
+                {/* rules summary */}
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                  {[
+                    `MAP ${room.mapW}×${room.mapW}`,
+                    `FORMATION W${room.lineupW}`,
+                    room.ranked ? 'RANKED' : 'CASUAL',
+                    `TIMER ${room.timer === 0 ? 'OFF' : room.timer + 'S'}`,
+                    room.visibility.toUpperCase(),
+                  ].map(chip => (
+                    <span key={chip} style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9,
+                      color:'var(--bone)', letterSpacing:'0.12em', padding:'5px 10px',
+                      background:'var(--abyss-1)', border:'1px solid var(--abyss-3)' }}>{chip}</span>
+                  ))}
+                </div>
+
+                <div style={{ flex:1 }}/>
+                <button className="btn ghost sm" onClick={closeRoom}
+                  style={{ justifyContent:'center', color:'oklch(0.7 0.15 25)' }}>
+                  ✕ Close Room
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ padding:'10px 14px', background:'rgba(0,8,12,0.45)', border:'1px solid var(--abyss-3)',
           fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--bio-dim)',
@@ -773,6 +897,35 @@ const PortalStat = ({ k, v, accent }) => (
   </div>
 );
 
+// Room-config helpers (Portal · Create Room)
+const PortalOptRow = ({ label, hint, children }) => (
+  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:14 }}>
+    <div style={{ minWidth:0 }}>
+      <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone)', letterSpacing:'0.04em' }}>{label}</div>
+      <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:11.5, fontStyle:'italic',
+        color:'var(--bone-dim)' }}>{hint}</div>
+    </div>
+    {children}
+  </div>
+);
+
+const PortalSeg = ({ value, onChange, options }) => (
+  <div style={{ display:'inline-flex', border:'1px solid var(--abyss-4)', flexShrink:0 }}>
+    {options.map((o, i) => {
+      const sel = value === o.v;
+      return (
+        <button key={String(o.v)} onClick={()=>onChange(o.v)} style={{
+          padding:'7px 13px',
+          background: sel ? 'linear-gradient(180deg, oklch(0.35 0.08 188), oklch(0.22 0.05 192))' : 'var(--abyss-2)',
+          border:'none', borderRight: i < options.length-1 ? '1px solid var(--abyss-3)' : 'none',
+          color: sel ? 'var(--brass)' : 'var(--bone-dim)', cursor:'pointer',
+          fontFamily:'Cinzel, serif', fontSize:12, letterSpacing:'0.06em',
+        }}>{o.l}</button>
+      );
+    })}
+  </div>
+);
+
 // =============================================================================
 // PANEL 4 · TRAINING GROUND — custom both-side unit builder
 // =============================================================================
@@ -834,6 +987,11 @@ const TrainingPanel = ({ run, setRun, go }) => {
         { key:'A', title:'AI · Sovereign I',  subtitle:'First machine brood',  color:'var(--bio)',   colorDim:'var(--bio-dim)',   glyph:'◐' },
         { key:'B', title:'AI · Sovereign II', subtitle:'Second machine brood', color:'var(--coral)', colorDim:'var(--coral-dim)', glyph:'◑' },
       ]
+    : isPvP
+    ? [
+        { key:'A', title:'Your Lineup', subtitle:'The hand you will play', color:'var(--bio)',   colorDim:'var(--bio-dim)',   glyph:'◈' },
+        { key:'B', title:'Opponent',    subtitle:'The linked challenger',  color:'var(--coral)', colorDim:'var(--coral-dim)', glyph:'◣' },
+      ]
     : [
         { key:'A', title:'Your Lineup',     subtitle:'The hand you will play', color:'var(--bio)',   colorDim:'var(--bio-dim)',   glyph:'◈' },
         { key:'B', title:'Enemy AI Lineup', subtitle:'The machine you face',   color:'var(--coral)', colorDim:'var(--coral-dim)', glyph:'◣' },
@@ -883,13 +1041,13 @@ const TrainingPanel = ({ run, setRun, go }) => {
           ))}
         </div>
 
-        {isPvP ? (
-          <TrainingPvPPlaceholder/>
-        ) : (
+        {isPvP && <TrainingPvPDev run={run} setRun={setRun} go={go}/>}
+
+        {!isPvP && (
           <>
             {/* Shared formation width + bout params */}
             <div className="panel ornate" style={{ padding:'16px 20px', marginBottom:22,
-              display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:24 }}>
+              display:'grid', gridTemplateColumns: isPvP ? '1fr' : '1.4fr 1fr', gap:24 }}>
 
               <ParamGroup label="Shared Formation · Width">
                 <div style={{ display:'flex', gap:6 }}>
@@ -916,28 +1074,30 @@ const TrainingPanel = ({ run, setRun, go }) => {
                 </div>
               </ParamGroup>
 
-              <ParamGroup label="AI Skill">
-                <div style={{ display:'flex', gap:6 }}>
-                  {aiOptions.map(a => {
-                    const isSel = aiSkill === a.id;
-                    return (
-                      <button key={a.id} onClick={()=>setAiSkill(a.id)} title={a.desc}
-                        style={{
-                          flex:1, padding:'8px 6px', cursor:'pointer',
-                          background: isSel
-                            ? 'linear-gradient(180deg, oklch(0.35 0.08 188), oklch(0.22 0.05 192))'
-                            : 'var(--abyss-2)',
-                          border:`1px solid ${isSel ? 'var(--brass)' : 'var(--abyss-4)'}`,
-                          color: isSel ? 'var(--brass)' : 'var(--bone-dim)',
-                          fontFamily:'Cinzel, serif', fontSize:11, letterSpacing:'0.08em', textTransform:'uppercase',
-                          transition:'all 0.15s',
-                        }}>
-                        {a.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </ParamGroup>
+              {!isPvP && (
+                <ParamGroup label="AI Skill">
+                  <div style={{ display:'flex', gap:6 }}>
+                    {aiOptions.map(a => {
+                      const isSel = aiSkill === a.id;
+                      return (
+                        <button key={a.id} onClick={()=>setAiSkill(a.id)} title={a.desc}
+                          style={{
+                            flex:1, padding:'8px 6px', cursor:'pointer',
+                            background: isSel
+                              ? 'linear-gradient(180deg, oklch(0.35 0.08 188), oklch(0.22 0.05 192))'
+                              : 'var(--abyss-2)',
+                            border:`1px solid ${isSel ? 'var(--brass)' : 'var(--abyss-4)'}`,
+                            color: isSel ? 'var(--brass)' : 'var(--bone-dim)',
+                            fontFamily:'Cinzel, serif', fontSize:11, letterSpacing:'0.08em', textTransform:'uppercase',
+                            transition:'all 0.15s',
+                          }}>
+                          {a.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </ParamGroup>
+              )}
             </div>
 
             {/* Two-side lineup picker — both pools are W{width}, the shared width */}
@@ -971,8 +1131,8 @@ const TrainingPanel = ({ run, setRun, go }) => {
                   <span style={{ color:'var(--abyss-4)' }}>|</span>
                   <span>WIDTH {width}</span>
                   <span style={{ color:'var(--abyss-4)' }}>|</span>
-                  <span>AI {aiSkill.toUpperCase()}</span>
-                  <span style={{ color:'var(--abyss-4)' }}>|</span>
+                  {!isPvP && <span>AI {aiSkill.toUpperCase()}</span>}
+                  {!isPvP && <span style={{ color:'var(--abyss-4)' }}>|</span>}
                   <span style={{ color:'var(--bio)' }}>{sideA ? sideA.name : '— none —'}</span>
                   <span style={{ color:'var(--bone-dim)' }}>vs</span>
                   <span style={{ color:'var(--coral)' }}>{sideB ? sideB.name : '— none —'}</span>
@@ -1031,25 +1191,230 @@ const TrainingModeCard = ({ mode, active, onClick }) => (
 );
 
 // --- PvP placeholder: the duelling pit is not yet wired.
-const TrainingPvPPlaceholder = () => (
-  <div className="panel ornate" style={{ padding:'60px 40px', textAlign:'center',
-    display:'flex', flexDirection:'column', alignItems:'center', gap:14 }}>
-    <div style={{ fontFamily:'Cinzel, serif', fontSize:54, color:'var(--brass-deep)',
-      textShadow:'0 0 20px oklch(0.72 0.11 80 / 0.25)' }}>⚔</div>
-    <div style={{ fontFamily:'Cinzel, serif', fontSize:20, color:'var(--bone)', letterSpacing:'0.08em' }}>
-      Player versus Player
+// --- Dev PvP — a direct peer link through a service-agnostic transport.
+// Loopback (BroadcastChannel · two tabs, one browser) works today; Tailscale
+// (100.x peer) drops in behind the same window.createPvpLink interface later.
+// Collects match rules + endpoint, opens the link, and stashes run.pvpSession.
+const TrainingPvPDev = ({ run, setRun, go }) => {
+  const transports = window.PVP_TRANSPORTS || [{ id:'loopback', label:'Loopback', sub:'this browser', available:true }];
+  const genCode = () => 'GOK-' + Math.random().toString(36).slice(2,6).toUpperCase();
+
+  const saved = run.pvpSession || {};
+  const [transport, setTransport] = React.useState(saved.transport || 'loopback');
+  const [role,   setRole]   = React.useState(saved.role || 'host');     // 'host' | 'join'
+  const [code,   setCode]   = React.useState(saved.code || genCode());  // loopback rendezvous
+  const [addr,   setAddr]   = React.useState(saved.addr || '');         // tailscale peer/own IP
+  const [port,   setPort]   = React.useState(saved.port || 7777);
+  const [cfg,    setCfg]    = React.useState({ mapW: saved.mapW || 8, lineupW: saved.lineupW || 6 });
+  const [status, setStatus] = React.useState('idle'); // idle | connecting | connected | closed | error
+  const [log,    setLog]    = React.useState([]);
+  const linkRef = React.useRef(null);
+
+  const pushLog = (line) => setLog(l => [...l.slice(-7), `${new Date().toLocaleTimeString()} · ${line}`]);
+  const setC = (k, v) => setCfg(c => ({ ...c, [k]: v }));
+  const isLoop = transport === 'loopback';
+
+  // tear the link down if the panel unmounts
+  React.useEffect(() => () => { if (linkRef.current) linkRef.current.close(); }, []);
+
+  const onState = (st, note) => {
+    setStatus(st);
+    if (note) pushLog(note);
+    setRun(r => ({ ...r, pvpSession: { transport, role, code, addr:addr.trim(), port, ...cfg, status: st } }));
+  };
+  const onMessage = (msg) => {
+    if (msg && msg.t === 'ping') pushLog('◉ Ping from peer.');
+    else pushLog('↘ ' + JSON.stringify(msg));
+  };
+
+  const start = () => {
+    const tr = transports.find(t => t.id === transport);
+    if (tr && !tr.available) { pushLog(`⚠ ${tr.label} transport not wired yet — use Loopback.`); return; }
+    if (isLoop && !code.trim()) { pushLog('⚠ Enter a room code.'); return; }
+    if (!isLoop && !/^\d{1,3}(\.\d{1,3}){3}$/.test(addr.trim())) { pushLog('⚠ Enter a valid Tailscale IPv4 (100.x.y.z).'); return; }
+    if (linkRef.current) linkRef.current.close();
+    linkRef.current = window.createPvpLink({
+      transport, role, code: code.trim(), addr: addr.trim(), port, cfg, onState, onMessage,
+    });
+  };
+  const stop = () => {
+    if (linkRef.current) { linkRef.current.close(); linkRef.current = null; }
+    setStatus('idle'); pushLog('Link closed.');
+    setRun(r => { const { pvpSession, ...rest } = r; return rest; });
+  };
+  const ping = () => { if (linkRef.current) { linkRef.current.send({ t:'ping', at:Date.now() }); pushLog('↗ Ping sent.'); } };
+  const beginDuel = () => {
+    setRun(r => ({ ...r, pvpSession: { ...(r.pvpSession||{}), begin:true } }));
+    go('pvp-setup'); // arm the board on a separate screen
+  };
+
+  const statusMeta = {
+    idle:       { dot:'var(--bone-dim)',    label:'OFFLINE' },
+    connecting: { dot:'oklch(0.7 0.14 70)', label: role==='host' ? 'WAITING' : 'CONNECTING' },
+    connected:  { dot:'var(--bio)',         label:'CONNECTED' },
+    closed:     { dot:'var(--bone-dim)',    label:'CLOSED' },
+    error:      { dot:'var(--coral)',       label:'ERROR' },
+  }[status] || { dot:'var(--bone-dim)', label:status.toUpperCase() };
+
+  const live = status === 'connecting' || status === 'connected';
+  const inputStyle = {
+    flex:1, padding:'9px 11px', background:'var(--abyss-0)', border:'1px solid var(--abyss-4)',
+    color:'var(--bone)', fontFamily:'JetBrains Mono, monospace', fontSize:13, letterSpacing:'0.1em', outline:'none',
+  };
+
+  return (
+    <div className="panel ornate" style={{ padding:'22px 26px', maxWidth:720, margin:'0 auto',
+      display:'flex', flexDirection:'column', gap:16 }}>
+      <div>
+        <div className="eyebrow" style={{ color:'var(--bio-dim)' }}>⚔ Dev PvP · Direct Link</div>
+        <div style={{ fontFamily:'Cinzel, serif', fontSize:20, color:'var(--bone)', letterSpacing:'0.05em', marginTop:3 }}>
+          Peer Duel
+        </div>
+        <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, fontStyle:'italic',
+          color:'var(--bone-dim)', marginTop:4, lineHeight:1.5 }}>
+          Two clients, one transport-agnostic link. Loopback pairs two tabs of this browser today;
+          Tailscale will pair two machines later — same flow, no service lock-in.
+        </div>
+      </div>
+
+      {/* transport selector */}
+      <div>
+        <div className="caps" style={{ marginBottom:6 }}>Transport</div>
+        <div style={{ display:'flex', gap:8 }}>
+          {transports.map(t => {
+            const sel = transport === t.id;
+            return (
+              <button key={t.id} disabled={!t.available && !sel}
+                onClick={()=>{ if (live) return; setTransport(t.id); }}
+                title={t.available ? '' : 'Not wired yet'}
+                style={{
+                  flex:1, padding:'10px 12px', textAlign:'left', cursor: t.available ? 'pointer' : 'not-allowed',
+                  background: sel ? 'linear-gradient(180deg, oklch(0.35 0.08 188), oklch(0.22 0.05 192))' : 'var(--abyss-1)',
+                  border:`1px solid ${sel ? 'var(--brass)' : 'var(--abyss-4)'}`, color:'var(--bone)',
+                  opacity: t.available ? 1 : 0.45,
+                }}>
+                <div style={{ fontFamily:'Cinzel, serif', fontSize:13, letterSpacing:'0.05em',
+                  color: sel ? 'var(--brass)' : 'var(--bone)' }}>
+                  {t.label}{!t.available && ' ·soon'}
+                </div>
+                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
+                  letterSpacing:'0.12em', marginTop:3, textTransform:'uppercase' }}>{t.sub}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* role toggle */}
+      <div style={{ display:'flex', gap:8 }}>
+        {[{ id:'host', glyph:'⌂', label:'Host', sub: isLoop ? 'Open a room' : 'Listen for a peer' },
+          { id:'join', glyph:'⇲', label:'Join', sub: isLoop ? 'Enter a room code' : 'Dial a host' }].map(r => {
+          const sel = role === r.id;
+          return (
+            <button key={r.id} onClick={()=>{ if (!live) setRole(r.id); }}
+              style={{
+                flex:1, padding:'12px 14px', textAlign:'left', cursor: live ? 'not-allowed' : 'pointer',
+                background: sel ? 'linear-gradient(180deg, oklch(0.35 0.08 188), oklch(0.22 0.05 192))' : 'var(--abyss-1)',
+                border:`1px solid ${sel ? 'var(--brass)' : 'var(--abyss-4)'}`,
+                borderLeft:`3px solid ${sel ? 'var(--brass)' : 'var(--abyss-4)'}`, color:'var(--bone)',
+              }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontFamily:'Cinzel, serif', fontSize:20, color: sel ? 'var(--brass)' : 'var(--bone-dim)' }}>{r.glyph}</span>
+                <span style={{ fontFamily:'Cinzel, serif', fontSize:14, letterSpacing:'0.06em' }}>{r.label}</span>
+              </div>
+              <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:11.5, fontStyle:'italic',
+                color:'var(--bone-dim)', marginTop:4 }}>{r.sub}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* rendezvous: loopback → room code · tailscale → IP:port */}
+      <div>
+        <div className="caps" style={{ marginBottom:6 }}>
+          {isLoop ? 'Room Code' : (role === 'host' ? 'Your Tailscale Endpoint' : 'Host’s Tailscale Endpoint')}
+        </div>
+        {isLoop ? (
+          <div style={{ display:'flex', gap:8 }}>
+            <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} disabled={live}
+              placeholder="GOK-XXXX" title="Room code" style={inputStyle}/>
+            {role === 'host' && !live && (
+              <button className="btn ghost sm" onClick={()=>setCode(genCode())} title="New code">↺</button>
+            )}
+          </div>
+        ) : (
+          <div style={{ display:'flex', gap:8 }}>
+            <input value={addr} onChange={e=>setAddr(e.target.value)} disabled={live}
+              placeholder="100.x.y.z" title="Tailscale IPv4" style={inputStyle}/>
+            <input value={port} onChange={e=>setPort(Number(e.target.value) || 0)} disabled={live}
+              title="Port" type="number" style={{ ...inputStyle, flex:'0 0 96px', textAlign:'center' }}/>
+          </div>
+        )}
+        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+          letterSpacing:'0.12em', marginTop:5 }}>
+          {isLoop
+            ? (role === 'host' ? '‣ OPEN A 2ND TAB · JOIN WITH THIS CODE' : '‣ ENTER THE HOST TAB’S CODE')
+            : (role === 'host' ? '‣ RUN `tailscale ip -4` AND PASTE IT HERE' : '‣ ASK THE HOST FOR THEIR 100.x ADDRESS')}
+        </div>
+      </div>
+
+      {/* match rules (host sets) */}
+      <div style={{ background:'var(--abyss-1)', border:'1px solid var(--abyss-3)', padding:'14px 16px',
+        display:'flex', flexDirection:'column', gap:12, opacity: role === 'join' ? 0.6 : 1 }}>
+        <div className="caps">Match Rules {role === 'join' && '· set by host'}</div>
+        <PortalOptRow label="Map Size" hint="Board both broods fight on.">
+          <PortalSeg value={cfg.mapW} onChange={v=>setC('mapW', v)}
+            options={[{v:6,l:'6×6'},{v:8,l:'8×8'},{v:10,l:'10×10'}]}/>
+        </PortalOptRow>
+        <PortalOptRow label="Formation Width" hint="Lineup width each side brings.">
+          <PortalSeg value={cfg.lineupW} onChange={v=>setC('lineupW', v)}
+            options={[{v:4,l:'W4'},{v:6,l:'W6'},{v:8,l:'W8'},{v:10,l:'W10'}]}/>
+        </PortalOptRow>
+      </div>
+
+      {/* status + actions */}
+      <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+        <span style={{ width:9, height:9, borderRadius:'50%', background:statusMeta.dot,
+          boxShadow:`0 0 8px ${statusMeta.dot}` }}/>
+        <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color:statusMeta.dot,
+          letterSpacing:'0.2em' }}>{statusMeta.label}</span>
+        <div style={{ flex:1 }}/>
+        {!live && (
+          <button className="btn primary" onClick={start} style={{ padding:'10px 20px' }}>
+            {role === 'host' ? '⌂ Open Link' : '⇲ Connect'}
+          </button>
+        )}
+        {status === 'connecting' && (
+          <button className="btn ghost sm" onClick={stop}>Cancel</button>
+        )}
+        {status === 'connected' && (
+          <>
+            <button className="btn sm" onClick={ping}
+              style={{ border:'1px solid var(--bio)', color:'var(--bio)', padding:'8px 14px' }}>↔ Ping</button>
+            <button className="btn primary" onClick={beginDuel} style={{ padding:'10px 18px' }}>▷ Begin Duel</button>
+            <button className="btn ghost sm" onClick={stop} style={{ color:'oklch(0.7 0.15 25)' }}>Disconnect</button>
+          </>
+        )}
+      </div>
+
+      {/* connection log */}
+      {log.length > 0 && (
+        <div style={{ background:'rgba(0,8,12,0.5)', border:'1px solid var(--abyss-3)', padding:'10px 12px',
+          display:'flex', flexDirection:'column', gap:3, maxHeight:120, overflowY:'auto' }}>
+          {log.map((line, i) => (
+            <div key={i} style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9.5,
+              color:'var(--bio-dim)', letterSpacing:'0.04em' }}>{line}</div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+        letterSpacing:'0.12em', textAlign:'center', lineHeight:1.7 }}>
+        ◇ DEV BUILD · {isLoop ? 'LOOPBACK · TWO TABS, ONE BROWSER' : 'TAILSCALE · DIRECT, NO RELAY'} · TRANSPORT-AGNOSTIC
+      </div>
     </div>
-    <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:15, fontStyle:'italic',
-      color:'var(--bone-dim)', maxWidth:520, lineHeight:1.6 }}>
-      The duelling pit is not yet open. Two sovereigns will one day share this board —
-      for now, sharpen yourself against the Reef-mind.
-    </div>
-    <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
-      letterSpacing:'0.25em', textTransform:'uppercase', marginTop:4 }}>
-      ◇ Coming on a later tide
-    </div>
-  </div>
-);
+  );
+};
 
 // --- One side of the bout: a column of selectable lineups, all at the shared width.
 const TrainingLineupColumn = ({ side, lineups, selectedId, onSelect, roster, width, onForge }) => (
@@ -1614,5 +1979,139 @@ const SimulationPanel = ({ run, setRun, go }) => {
     </div>
   );
 };
+
+// =============================================================================
+// PVP SETUP — separate screen reached from "Begin Duel". The host arms the
+// board here (shared width + both lineups), apart from the connection page,
+// then proceeds into the Sparring Field.
+// =============================================================================
+const PvPSetup = ({ run, setRun, go }) => {
+  const sess = run.pvpSession || {};
+  const roster = run.roster || [];
+  const allLineups = run.lineups || {};
+
+  const eligibleFor = (w) => (allLineups[w] || []).filter(ln => Object.keys(ln.board || {}).length > 0);
+  const [width, setWidth] = React.useState(sess.lineupW || run.lineupWidth || 6);
+  const [sideAId, setSideAId] = React.useState(null);
+  const [sideBId, setSideBId] = React.useState(null);
+
+  React.useEffect(() => {
+    const fresh = eligibleFor(width);
+    setSideAId(fresh[0]?.id || null);
+    setSideBId(fresh[1]?.id || fresh[0]?.id || null);
+  // eslint-disable-next-line
+  }, [width]);
+  React.useEffect(() => {
+    setRun(r => r.lineupWidth === width ? r : { ...r, lineupWidth: width });
+  // eslint-disable-next-line
+  }, [width]);
+
+  const eligible = eligibleFor(width);
+  const sideA = eligible.find(l => l.id === sideAId) || null;
+  const sideB = eligible.find(l => l.id === sideBId) || null;
+  const canGo = !!sideA && !!sideB;
+
+  const forge = () => { setRun(r => ({ ...r, lineupWidth: width })); go('op-lineup'); };
+  const back  = () => { setRun(r => ({ ...r, commandSubTab:'training' })); go('op-command'); };
+  const proceed = () => {
+    if (!canGo) return;
+    setRun(r => ({ ...r, trainingConfig: { mode:'pvp', width, sideA: sideAId, sideB: sideBId, aiSkill:null } }));
+    go('training-board');
+  };
+
+  const sides = [
+    { key:'A', title:'Your Lineup', subtitle:'The hand you will play', color:'var(--bio)',   colorDim:'var(--bio-dim)',   glyph:'◈' },
+    { key:'B', title:'Opponent',    subtitle: sess.code ? `Linked · ${sess.code}` : 'The linked challenger',
+      color:'var(--coral)', colorDim:'var(--coral-dim)', glyph:'◣' },
+  ];
+
+  return (
+    <div className="screen" style={{ position:'absolute', inset:0, background:'var(--abyss-0)',
+      display:'flex', flexDirection:'column' }}>
+      {/* top bar */}
+      <div style={{ height:60, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between',
+        padding:'0 24px', background:'linear-gradient(180deg, rgba(8,12,16,0.92), rgba(0,0,0,0.6))',
+        borderBottom:'1px solid var(--abyss-4)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+          <button className="btn ghost sm" onClick={back}>← Back to Link</button>
+          <div>
+            <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.3em',
+              color:'var(--brass-dim)', textTransform:'uppercase' }}>Dev PvP · Arm the Board</div>
+            <div style={{ fontFamily:'Cinzel, serif', fontSize:16, color:'var(--bone)', letterSpacing:'0.06em' }}>
+              PEER DUEL{sess.code ? ` · ${sess.code}` : ''}
+            </div>
+          </div>
+        </div>
+        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bio-dim)',
+          letterSpacing:'0.2em', textTransform:'uppercase' }}>
+          ◉ {sess.status === 'connected' ? 'LINK LIVE' : 'LINK ' + (sess.status || 'IDLE').toUpperCase()}
+        </div>
+      </div>
+
+      <div style={{ flex:1, minHeight:0, overflowY:'auto', padding:'24px 36px' }}>
+        <div style={{ maxWidth:1180, margin:'0 auto' }}>
+          {/* shared width */}
+          <ParamGroup label="Shared Formation · Width">
+            <div style={{ display:'flex', gap:6, maxWidth:520 }}>
+              {TRAINING_FORMATIONS.map(f => {
+                const isSel = width === f.w;
+                const cnt = eligibleFor(f.w).length;
+                return (
+                  <button key={f.w} onClick={()=>setWidth(f.w)} title={`${f.title} · ${cnt} ready`}
+                    style={{
+                      flex:1, padding:'8px 6px', cursor:'pointer', textAlign:'center',
+                      background: isSel ? 'linear-gradient(180deg, var(--abyss-3), var(--abyss-2))' : 'var(--abyss-2)',
+                      border:`1px solid ${isSel ? f.color : 'var(--abyss-4)'}`,
+                      borderTop:`3px solid ${isSel ? f.color : 'var(--abyss-4)'}`,
+                      color: isSel ? f.color : 'var(--bone-dim)', transition:'all 0.15s',
+                    }}>
+                    <div style={{ fontFamily:'Cinzel, serif', fontSize:15, letterSpacing:'0.05em' }}>{f.label}</div>
+                    <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8,
+                      color: cnt>0 ? 'var(--bone-dim)' : 'var(--abyss-4)', letterSpacing:'0.15em', marginTop:2 }}>
+                      {cnt} READY
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </ParamGroup>
+
+          {/* two lineup columns */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 1fr', gap:18, margin:'22px 0' }}>
+            <TrainingLineupColumn side={sides[0]} lineups={eligible} selectedId={sideAId}
+              onSelect={setSideAId} roster={roster} width={width} onForge={forge}/>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14 }}>
+              <div style={{ width:1, flex:1, background:'linear-gradient(180deg, transparent, var(--brass-deep), transparent)' }}/>
+              <div style={{ fontFamily:'Cinzel, serif', fontSize:28, color:'var(--brass)',
+                textShadow:'0 0 14px oklch(0.72 0.11 80 / 0.4)' }}>vs</div>
+              <div style={{ width:1, flex:1, background:'linear-gradient(180deg, transparent, var(--brass-deep), transparent)' }}/>
+            </div>
+            <TrainingLineupColumn side={sides[1]} lineups={eligible} selectedId={sideBId}
+              onSelect={setSideBId} roster={roster} width={width} onForge={forge}/>
+          </div>
+        </div>
+      </div>
+
+      {/* footer */}
+      <div style={{ flexShrink:0, borderTop:'1px solid var(--abyss-4)', padding:'12px 24px',
+        display:'flex', alignItems:'center', gap:16,
+        background:'linear-gradient(0deg, rgba(8,12,16,0.92), rgba(0,0,0,0.4))' }}>
+        <div style={{ flex:1, fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--bone)',
+          letterSpacing:'0.1em', display:'flex', gap:14, flexWrap:'wrap' }}>
+          <span>WIDTH {width}</span>
+          <span style={{ color:'var(--abyss-4)' }}>|</span>
+          <span style={{ color:'var(--bio)' }}>{sideA ? sideA.name : '— none —'}</span>
+          <span style={{ color:'var(--bone-dim)' }}>vs</span>
+          <span style={{ color:'var(--coral)' }}>{sideB ? sideB.name : '— none —'}</span>
+        </div>
+        <button className="btn primary" onClick={proceed} disabled={!canGo}
+          style={{ padding:'12px 28px', fontSize:14 }}>
+          ▷ Proceed to Training
+        </button>
+      </div>
+    </div>
+  );
+};
+window.PvPSetup = PvPSetup;
 
 window.CommandChamber = CommandChamber;
