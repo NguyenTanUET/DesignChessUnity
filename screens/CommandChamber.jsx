@@ -1223,6 +1223,12 @@ const TrainingPvPDev = ({ run, setRun, go }) => {
     setRun(r => ({ ...r, pvpSession: { transport, role, code, addr:addr.trim(), port, ...cfg, status: st } }));
   };
   const onMessage = (msg) => {
+    if (msg && msg.t === 'begin') {            // host began — follow them in
+      pushLog('◉ Peer began the duel — arming the board.');
+      setRun(r => ({ ...r, pvpSession: { ...(r.pvpSession||{}), begin:true } }));
+      go('pvp-setup');
+      return;
+    }
     if (msg && msg.t === 'ping') pushLog('◉ Ping from peer.');
     else pushLog('↘ ' + JSON.stringify(msg));
   };
@@ -1244,8 +1250,10 @@ const TrainingPvPDev = ({ run, setRun, go }) => {
   };
   const ping = () => { if (linkRef.current) { linkRef.current.send({ t:'ping', at:Date.now() }); pushLog('↗ Ping sent.'); } };
   const beginDuel = () => {
+    // Pull the peer in too, then arm the board on a separate screen.
+    if (linkRef.current) linkRef.current.send({ t:'begin' });
     setRun(r => ({ ...r, pvpSession: { ...(r.pvpSession||{}), begin:true } }));
-    go('pvp-setup'); // arm the board on a separate screen
+    go('pvp-setup');
   };
 
   const statusMeta = {

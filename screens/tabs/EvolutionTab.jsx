@@ -6,6 +6,11 @@ const EvolutionTab = ({ run, setRun, selId }) => {
   const chain = sel ? EVOLUTION[sel.archetype] : [];
   const dna = run.res?.dna || 0;
 
+  // The two factors that shift with every evolution: species + temperament.
+  const cls = sel ? classificationById(sel.classification || classificationFor(sel.archetype)) : null;
+  const facet = sel ? facetById(sel.facet) : null;
+  const maxTier = chain.length - 1;
+
   if (!sel || !arch) {
     return (
       <div style={{ padding:'80px 40px', textAlign:'center', color:'var(--bone-dim)', fontStyle:'italic' }}>
@@ -38,12 +43,102 @@ const EvolutionTab = ({ run, setRun, selId }) => {
       </h2>
 
       {/* DNA resource bar */}
-      <div style={{ display:'flex', gap:14, alignItems:'center', marginBottom:32,
+      <div style={{ display:'flex', gap:14, alignItems:'center', marginBottom:24,
         padding:'10px 22px', border:'1px solid var(--abyss-4)', background:'rgba(0,0,0,0.45)' }}>
         <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, letterSpacing:'0.3em',
           color:'var(--bio-dim)', textTransform:'uppercase' }}>DNA Reservoir</span>
         <span style={{ fontFamily:'Cinzel, serif', fontSize:22, color:'var(--bio)',
           textShadow:'0 0 12px var(--bio)' }}>✧ {dna}</span>
+      </div>
+
+      {/* The two evolution factors: Classification (species) + Facet (temperament) */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, width:'100%',
+        maxWidth:760, marginBottom:30 }}>
+        {/* CLASSIFICATION */}
+        <div style={{ padding:'16px 18px', background:'var(--abyss-1)',
+          border:`1px solid ${cls.color.replace(')',' / 0.5)')}`, borderTop:`3px solid ${cls.color}` }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
+            <span style={{ fontFamily:'Cinzel, serif', fontSize:24, color:cls.color,
+              textShadow:`0 0 12px ${cls.color}` }}>{cls.glyph}</span>
+            <div>
+              <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.25em',
+                color:'var(--bone-dim)', textTransform:'uppercase' }}>Classification · pre-assigned</div>
+              <div style={{ fontFamily:'Cinzel, serif', fontSize:16, color:'var(--bone)', letterSpacing:'0.04em' }}>
+                {cls.name}
+              </div>
+            </div>
+          </div>
+          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+            letterSpacing:'0.18em', textTransform:'uppercase', margin:'10px 0 6px' }}>
+            {cls.stat} · rises each evolution
+          </div>
+          {/* per-tier track */}
+          <div style={{ display:'flex', gap:5 }}>
+            {chain.map((_, t) => {
+              const isNow = t === sel.evoTier;
+              const reached = t <= sel.evoTier;
+              return (
+                <div key={t} style={{ flex:1, textAlign:'center', padding:'7px 2px',
+                  background: isNow ? cls.color.replace(')',' / 0.18)') : 'var(--abyss-0)',
+                  border:`1px solid ${isNow ? cls.color : 'var(--abyss-4)'}`,
+                  opacity: reached ? 1 : 0.5 }}>
+                  <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:7.5,
+                    color:'var(--bone-dim)', letterSpacing:'0.12em' }}>T{t}</div>
+                  <div style={{ fontFamily:'Cinzel, serif', fontSize:15,
+                    color: isNow ? cls.color : reached ? 'var(--bone)' : 'var(--bone-dim)' }}>
+                    {classValueAt(cls, t)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* FACET */}
+        <div style={{ padding:'16px 18px', background:'var(--abyss-1)',
+          border:`1px solid ${facet ? facet.color.replace(')',' / 0.5)') : 'var(--abyss-4)'}`,
+          borderTop:`3px solid ${facet ? facet.color : 'var(--abyss-4)'}` }}>
+          {facet ? (
+            <>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
+                <span style={{ fontFamily:'Cinzel, serif', fontSize:24, color:facet.color,
+                  textShadow:`0 0 12px ${facet.color}` }}>{facet.glyph}</span>
+                <div>
+                  <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.25em',
+                    color:'var(--bone-dim)', textTransform:'uppercase' }}>
+                    Facet · rolled at purchase{facet.kind === 'mixed' ? ' · mixed' : ''}
+                  </div>
+                  <div style={{ fontFamily:'Cinzel, serif', fontSize:16, color:'var(--bone)', letterSpacing:'0.04em' }}>
+                    {facet.name}
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, color:'var(--bone)',
+                fontStyle:'italic', lineHeight:1.5, margin:'8px 0' }}>
+                {facet.desc(sel.evoTier)}
+              </div>
+              {sel.evoTier < maxTier ? (
+                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:facet.color,
+                  letterSpacing:'0.1em', lineHeight:1.5, paddingTop:6, borderTop:'1px dashed var(--abyss-3)' }}>
+                  NEXT (T{sel.evoTier + 1}) → {facet.desc(sel.evoTier + 1)}
+                  <span style={{ display:'block', color:'var(--bone-dim)', marginTop:2 }}>
+                    {facet.kind === 'mixed' ? '↑ boon grows · ↓ bane fades' : '↑ effect grows each evolution'}
+                  </span>
+                </div>
+              ) : (
+                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+                  letterSpacing:'0.15em', paddingTop:6, borderTop:'1px dashed var(--abyss-3)' }}>
+                  ◆ FULLY EVOLVED
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, color:'var(--bone-dim)',
+              fontStyle:'italic', textAlign:'center', padding:'18px 8px' }}>
+              No facet imprinted on this specimen.
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Linear chain */}

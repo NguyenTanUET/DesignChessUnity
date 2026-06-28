@@ -322,6 +322,51 @@ const TRADER_STOCK = {
   augmentations: AUGMENTATIONS.slice(0, 10),
 };
 
+// ------------------ CLASSIFICATION (species) ------------------
+// Pre-assigned to a follower before purchase (a property of the species). Its
+// stat rises one level with every evolution: value(tier) = base + growth*tier.
+const CLASSIFICATIONS = [
+  { id:'cnidaria',      name:'Cnidaria',       glyph:'❀', color:'oklch(0.70 0.13 330)', stat:'Sting',     base:2, growth:2 },
+  { id:'cephalopoda',   name:'Cephalopoda',    glyph:'⊛', color:'oklch(0.62 0.14 290)', stat:'Guile',     base:3, growth:2 },
+  { id:'crustacea',     name:'Crustacea',      glyph:'⊐', color:'oklch(0.64 0.12 40)',  stat:'Carapace',  base:4, growth:2 },
+  { id:'echinodermata', name:'Echinodermata',  glyph:'✸', color:'oklch(0.70 0.12 75)',  stat:'Regrowth',  base:2, growth:3 },
+  { id:'chondrichthyes',name:'Chondrichthyes', glyph:'⋀', color:'oklch(0.68 0.10 195)', stat:'Predation', base:3, growth:3 },
+  { id:'teleostei',     name:'Teleostei',      glyph:'≈', color:'oklch(0.72 0.12 200)', stat:'Agility',   base:3, growth:2 },
+  { id:'polychaeta',    name:'Polychaeta',     glyph:'∿', color:'oklch(0.66 0.12 150)', stat:'Severance', base:2, growth:2 },
+  { id:'marine-mammal', name:'Marine Mammal',  glyph:'◗', color:'oklch(0.70 0.06 230)', stat:'Resolve',   base:4, growth:3 },
+  { id:'marine-reptile',name:'Marine Reptile', glyph:'⊙', color:'oklch(0.66 0.10 140)', stat:'Tenacity',  base:4, growth:2 },
+  { id:'plankton',      name:'Plankton',       glyph:'·', color:'oklch(0.74 0.10 90)',  stat:'Swarm',     base:1, growth:2 },
+];
+const classificationById = (id) => CLASSIFICATIONS.find(c => c.id === id) || CLASSIFICATIONS[0];
+const classValueAt = (cls, tier) => cls.base + cls.growth * tier;
+
+// Each archetype's species is fixed before purchase.
+const ARCHETYPE_CLASS = {
+  larva:'plankton', outrider:'chondrichthyes', prelate:'teleostei',
+  colossus:'cnidaria', matriarch:'cephalopoda', myrmidon:'crustacea', witch:'cephalopoda',
+};
+const classificationFor = (archetype) => ARCHETYPE_CLASS[archetype] || 'plankton';
+
+// ------------------ FACET (temperament) ------------------
+// Rolled at purchase (unknown until bought; buying again rolls a different one).
+// Each evolution strengthens the beneficial part and weakens the detrimental.
+const FACETS = [
+  { id:'contempt',    name:'Contempt',    glyph:'⊽', color:'oklch(0.68 0.13 40)',  kind:'good',
+    blurb:'Looks down on lesser prey.',
+    desc:(t)=>`+${10 + t*5}% accuracy when capturing a LOWER-Rank piece.` },
+  { id:'manipulator', name:'Manipulator', glyph:'⟁', color:'oklch(0.66 0.13 300)', kind:'mixed',
+    blurb:'Bends others to its will, and resents being bent.',
+    desc:(t)=>`+${1 + t} turn when it inflicts Controlled · −${Math.max(0, 1 - t)} turn when Controlled by a foe.` },
+  { id:'resentment',  name:'Resentment',  glyph:'⊼', color:'oklch(0.66 0.15 25)',  kind:'good',
+    blurb:'Burns to drag down its betters.',
+    desc:(t)=>`+${10 + t*5}% accuracy when capturing a HIGHER-Rank piece.` },
+  { id:'hoarder',     name:'Hoarder',     glyph:'◈', color:'oklch(0.72 0.12 80)',  kind:'good',
+    blurb:'Covets what it carries.',
+    desc:(t)=>`On State None→Carrying Resource: gain ${1 + t} Shield and ${1 + t} move range.` },
+];
+const facetById = (id) => FACETS.find(f => f.id === id) || null;
+const rollFacet = () => FACETS[Math.floor(Math.random() * FACETS.length)].id;
+
 // ------------------ STARTING FOLLOWERS (per class roster) ------------------
 function buildStartingRoster(cls) {
   // Use the class's deck to seed a roster of follower instances.
@@ -342,6 +387,8 @@ function buildStartingRoster(cls) {
       evoTier: 0,
       augSlotCount: slotCount,
       augments: { optic:null, neural:null, blood:null, fin:null, chassis:null },
+      classification: classificationFor(archetype), // species — fixed before purchase
+      facet: rollFacet(),                            // temperament — rolled per instance
       inPool: false, // deployment pool
     });
   }
@@ -361,5 +408,7 @@ Object.assign(window, {
   AUG_SLOTS, AUGMENTATIONS, FOLLOWER_ARCHETYPES, EVOLUTION,
   OP_RELICS, OVERSEERS, OP_ASSIGNMENTS, TRADER_STOCK,
   buildStartingRoster, generateFollowerName,
+  CLASSIFICATIONS, FACETS, classificationById, classValueAt,
+  classificationFor, facetById, rollFacet,
 });
 })();

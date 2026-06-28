@@ -32,11 +32,13 @@ const Trader = ({ run, setRun, go }) => {
       if (cat === 'followers') {
         const nextIdc = (r.roster||[]).length + 1;
         updates.roster = [...(r.roster||[]), {
-          instanceId: `f-bought-${item.id}`,
+          instanceId: `f-bought-${item.id}-${Date.now().toString(36)}`,
           archetype: item.archetype,
           name: window.generateFollowerName(item.archetype, Date.now() % 1000),
           evoTier: 0,
           augments: { optic:null, neural:null, blood:null, fin:null, chassis:null },
+          classification: window.classificationFor(item.archetype), // fixed by species
+          facet: window.rollFacet(),                                 // random temperament on purchase
           inPool: false,
         }];
       }
