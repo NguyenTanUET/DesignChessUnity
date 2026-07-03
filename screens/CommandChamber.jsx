@@ -1425,9 +1425,10 @@ const TrainingPvPDev = ({ run, setRun, go }) => {
 };
 
 // --- One side of the bout: a column of selectable lineups, all at the shared width.
-const TrainingLineupColumn = ({ side, lineups, selectedId, onSelect, roster, width, onForge }) => (
+const TrainingLineupColumn = ({ side, lineups, selectedId, onSelect, roster, width, onForge, readOnly }) => (
   <div style={{ padding:'16px 16px', background:'linear-gradient(180deg, var(--abyss-2), var(--abyss-1))',
-    border:`1px solid ${side.colorDim}`, borderTop:`3px solid ${side.color}` }}>
+    border:`1px solid ${side.colorDim}`, borderTop:`3px solid ${side.color}`,
+    opacity: readOnly ? 0.72 : 1 }}>
     <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:14 }}>
       <div>
         <div style={{ fontFamily:'Cinzel, serif', fontSize:17, color:side.color, letterSpacing:'0.06em',
@@ -1437,8 +1438,10 @@ const TrainingLineupColumn = ({ side, lineups, selectedId, onSelect, roster, wid
         <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12, color:'var(--bone-dim)',
           fontStyle:'italic', marginTop:2 }}>{side.subtitle}</div>
       </div>
-      <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
-        letterSpacing:'0.2em' }}>W{width}</div>
+      <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9,
+        color: readOnly ? side.color : 'var(--bone-dim)', letterSpacing:'0.2em', textAlign:'right' }}>
+        {readOnly ? '🔒 THEIRS' : `W${width}`}
+      </div>
     </div>
 
     {lineups.length === 0 ? (
@@ -1448,13 +1451,30 @@ const TrainingLineupColumn = ({ side, lineups, selectedId, onSelect, roster, wid
           fontStyle:'italic', lineHeight:1.5, marginBottom:12 }}>
           No W{width} lineup has been arrayed.
         </div>
-        <button className="btn primary" onClick={onForge}
-          style={{ width:'100%', justifyContent:'center', padding:'10px' }}>
-          + Forge W{width} Lineup
-        </button>
-        <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:9,
-          color:'var(--bone-dim)', letterSpacing:'0.15em' }}>
-          ‣ OPENS LINEUP TAB · W{width}
+        {!readOnly && (
+          <>
+            <button className="btn primary" onClick={onForge}
+              style={{ width:'100%', justifyContent:'center', padding:'10px' }}>
+              + Forge W{width} Lineup
+            </button>
+            <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:9,
+              color:'var(--bone-dim)', letterSpacing:'0.15em' }}>
+              ‣ OPENS LINEUP TAB · W{width}
+            </div>
+          </>
+        )}
+      </div>
+    ) : readOnly ? (
+      // locked view — only the chosen lineup, not selectable (it's the peer's)
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {(lineups.filter(ln => ln.id === selectedId).length ? lineups.filter(ln => ln.id === selectedId) : lineups.slice(0,1))
+          .map(ln => (
+            <LineupMiniCard key={ln.id} lineup={ln} roster={roster}
+              accent={side.color} selected onClick={()=>{}}/>
+          ))}
+        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+          letterSpacing:'0.15em', textAlign:'center', marginTop:2 }}>
+          ‣ ONLY THIS PLAYER MAY CHANGE IT
         </div>
       </div>
     ) : (
@@ -1995,6 +2015,7 @@ const SimulationPanel = ({ run, setRun, go }) => {
 // =============================================================================
 const PvPSetup = ({ run, setRun, go }) => {
   const sess = run.pvpSession || {};
+  const myRole = sess.role === 'join' ? 'join' : 'host'; // this client's seat
   const roster = run.roster || [];
   const allLineups = run.lineups || {};
 
@@ -2027,10 +2048,15 @@ const PvPSetup = ({ run, setRun, go }) => {
     go('training-board');
   };
 
+  // Column A is the HOST's lineup, column B the JOIN's. A player may edit only
+  // their own; the other is locked ("theirs").
   const sides = [
-    { key:'A', title:'Your Lineup', subtitle:'The hand you will play', color:'var(--bio)',   colorDim:'var(--bio-dim)',   glyph:'◈' },
-    { key:'B', title:'Opponent',    subtitle: sess.code ? `Linked · ${sess.code}` : 'The linked challenger',
-      color:'var(--coral)', colorDim:'var(--coral-dim)', glyph:'◣' },
+    { key:'A', owner:'host', color:'var(--bio)',   colorDim:'var(--bio-dim)',   glyph:'◈',
+      title: myRole === 'host' ? 'Your Lineup · Host' : 'Host',
+      subtitle: myRole === 'host' ? 'The hand you will play' : 'The host arrays this' },
+    { key:'B', owner:'join', color:'var(--coral)', colorDim:'var(--coral-dim)', glyph:'◣',
+      title: myRole === 'join' ? 'Your Lineup · Join' : 'Opponent',
+      subtitle: myRole === 'join' ? 'The hand you will play' : (sess.code ? `Linked · ${sess.code}` : 'The challenger arrays this') },
   ];
 
   return (
@@ -2087,7 +2113,8 @@ const PvPSetup = ({ run, setRun, go }) => {
           {/* two lineup columns */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 1fr', gap:18, margin:'22px 0' }}>
             <TrainingLineupColumn side={sides[0]} lineups={eligible} selectedId={sideAId}
-              onSelect={setSideAId} roster={roster} width={width} onForge={forge}/>
+              onSelect={setSideAId} roster={roster} width={width} onForge={forge}
+              readOnly={myRole !== 'host'}/>
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14 }}>
               <div style={{ width:1, flex:1, background:'linear-gradient(180deg, transparent, var(--brass-deep), transparent)' }}/>
               <div style={{ fontFamily:'Cinzel, serif', fontSize:28, color:'var(--brass)',
@@ -2095,7 +2122,8 @@ const PvPSetup = ({ run, setRun, go }) => {
               <div style={{ width:1, flex:1, background:'linear-gradient(180deg, transparent, var(--brass-deep), transparent)' }}/>
             </div>
             <TrainingLineupColumn side={sides[1]} lineups={eligible} selectedId={sideBId}
-              onSelect={setSideBId} roster={roster} width={width} onForge={forge}/>
+              onSelect={setSideBId} roster={roster} width={width} onForge={forge}
+              readOnly={myRole !== 'join'}/>
           </div>
         </div>
       </div>
