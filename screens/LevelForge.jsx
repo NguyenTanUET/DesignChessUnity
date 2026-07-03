@@ -390,7 +390,7 @@ const ForgeEditor = ({ level, onChange, onDelete }) => {
             onEdit={(mut)=>updateStage(stage.id, mut)}/>
           <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
             letterSpacing:'0.18em', textAlign:'center' }}>
-            ‣ CLICK / DRAG TO PAINT · SAME TOOL AGAIN TO REMOVE
+            ‣ CLICK / DRAG TO PAINT · SAME TOOL AGAIN TO REMOVE · WHEEL ZOOM · SCROLLBARS PAN
           </div>
         </div>
       )}
@@ -596,7 +596,28 @@ const ForgeToolbar = ({ tool, setTool, enemyType, setEnemyType, terrainType, set
 // =============================================================================
 const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }) => {
   const { w, h } = stage;
-  const cell = Math.max(26, Math.min(56, Math.floor(720 / w), Math.floor(520 / h)));
+
+  // Fixed viewport: a 16×16-cell frame regardless of board size. Boards larger
+  // than the frame are reached by (1) wheel-zooming until they fit or
+  // (2) dragging the scrollbars that appear when the board overflows.
+  const FRAME_CELLS = 16, BASE_CELL = 34, FRAME_PX = FRAME_CELLS * BASE_CELL; // 544px
+  const [zoom, setZoom] = React.useState(1);
+  const frameRef = React.useRef(null);
+  const cell = Math.max(10, Math.round(BASE_CELL * zoom));
+  const clampZoom = (z) => Math.min(2, Math.max(0.3, z));
+  const fitZoom = () => setZoom(clampZoom(Math.min(1, FRAME_CELLS / w, FRAME_CELLS / h)));
+
+  // Wheel zoom — native listener so preventDefault works (React wheel is passive).
+  React.useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      setZoom(z => clampZoom(+(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1)).toFixed(3)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
   // While the mouse is held, every entered cell receives the same add/remove
   // mode that the first cell decided — prevents flicker while drag-painting.
   const paint = React.useRef({ active:false, mode:'add' });
@@ -667,15 +688,49 @@ const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }
   const cells = [];
   for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) cells.push(`${r}-${c}`);
 
+  const zoomBtn = {
+    width:26, height:26, padding:0, background:'var(--abyss-1)',
+    border:'1px solid var(--abyss-4)', color:'var(--bone)',
+    fontFamily:'JetBrains Mono, monospace', fontSize:13, lineHeight:1,
+  };
+
   return (
-    <div style={{
-      display:'inline-grid',
-      gridTemplateColumns:`repeat(${w}, ${cell}px)`,
-      gridTemplateRows:`repeat(${h}, ${cell}px)`,
-      border:'1px solid var(--brass-deep)',
-      boxShadow:'0 12px 40px rgba(0,0,0,0.7), inset 0 0 30px rgba(0,0,0,0.6)',
-      background:'var(--abyss-1)', userSelect:'none',
-    }}>
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}>
+      {/* zoom bar */}
+      <div style={{ width: FRAME_PX + 20, display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+          letterSpacing:'0.15em' }}>
+          BOARD {w}×{h} · VIEW {FRAME_CELLS}×{FRAME_CELLS}
+        </span>
+        <div style={{ flex:1 }}/>
+        <button onClick={()=>setZoom(z=>clampZoom(+(z / 1.1).toFixed(3)))} title="Zoom out" style={zoomBtn}>−</button>
+        <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--brass)',
+          minWidth:44, textAlign:'center', letterSpacing:'0.05em' }}>
+          {Math.round(zoom * 100)}%
+        </span>
+        <button onClick={()=>setZoom(z=>clampZoom(+(z * 1.1).toFixed(3)))} title="Zoom in" style={zoomBtn}>+</button>
+        <button onClick={fitZoom} title="Fit the whole board into the frame"
+          style={{ ...zoomBtn, width:'auto', padding:'0 10px', fontSize:10, letterSpacing:'0.12em' }}>
+          ⊡ FIT
+        </button>
+      </div>
+
+      {/* fixed 16×16-cell viewport — wheel zooms, scrollbars pan */}
+      <div ref={frameRef}
+        title="Wheel · zoom in/out — scrollbars · pan"
+        style={{
+          width: FRAME_PX + 20, height: FRAME_PX + 20, overflow:'auto', display:'flex',
+          border:'1px solid var(--brass-deep)', background:'var(--abyss-0)',
+          boxShadow:'0 12px 40px rgba(0,0,0,0.7), inset 0 0 30px rgba(0,0,0,0.6)',
+        }}>
+        <div style={{ margin:'auto', padding:10 }}>
+          <div style={{
+            display:'inline-grid',
+            gridTemplateColumns:`repeat(${w}, ${cell}px)`,
+            gridTemplateRows:`repeat(${h}, ${cell}px)`,
+            border:'1px solid var(--brass-deep)',
+            background:'var(--abyss-1)', userSelect:'none',
+          }}>
       {cells.map(key => {
         const [r, c] = key.split('-').map(Number);
         const dark = (r + c) % 2 === 1;
@@ -755,6 +810,9 @@ const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }
           </div>
         );
       })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
@@ -769,8 +827,8 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
 
   // prune out-of-range cells when the board shrinks
   const resize = (dw, dh) => {
-    const w = Math.max(4, Math.min(14, stage.w + dw));
-    const h = Math.max(4, Math.min(14, stage.h + dh));
+    const w = Math.max(4, Math.min(24, stage.w + dw));
+    const h = Math.max(4, Math.min(24, stage.h + dh));
     const fits = (key) => { const [r,c] = key.split('-').map(Number); return r < h && c < w; };
     const fitMap = (m) => Object.fromEntries(Object.entries(m).filter(([k]) => fits(k)));
     onEdit(cur => ({
