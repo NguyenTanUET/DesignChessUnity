@@ -949,7 +949,13 @@ const TrainingPanel = ({ run, setRun, go }) => {
   const roster     = run.roster  || [];
   const allLineups = run.lineups || {};
 
-  const [mode,    setMode]    = React.useState('pvai');
+  // Honor a one-shot return mode (e.g. "← Back to PvP" from the setup screen),
+  // then clear it so normal entry defaults to P vs AI.
+  const [mode,    setMode]    = React.useState(run.trainingMode || 'pvai');
+  React.useEffect(() => {
+    if (run.trainingMode) setRun(r => { const { trainingMode, ...rest } = r; return rest; });
+  // eslint-disable-next-line
+  }, []);
   const [width,   setWidth]   = React.useState(run.lineupWidth || 6);
   const [sideAId, setSideAId] = React.useState(null);
   const [sideBId, setSideBId] = React.useState(null);
@@ -1399,7 +1405,12 @@ const TrainingPvPDev = ({ run, setRun, go }) => {
           <>
             <button className="btn sm" onClick={ping}
               style={{ border:'1px solid var(--bio)', color:'var(--bio)', padding:'8px 14px' }}>↔ Ping</button>
-            <button className="btn primary" onClick={beginDuel} style={{ padding:'10px 18px' }}>▷ Begin Duel</button>
+            {role === 'host' ? (
+              <button className="btn primary" onClick={beginDuel} style={{ padding:'10px 18px' }}>▷ Begin Duel</button>
+            ) : (
+              <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--brass-dim)',
+                letterSpacing:'0.15em' }}>⌛ HOST BEGINS THE DUEL</span>
+            )}
             <button className="btn ghost sm" onClick={stop} style={{ color:'oklch(0.7 0.15 25)' }}>Disconnect</button>
           </>
         )}
@@ -2041,7 +2052,7 @@ const PvPSetup = ({ run, setRun, go }) => {
   const canGo = !!sideA && !!sideB;
 
   const forge = () => { setRun(r => ({ ...r, lineupWidth: width })); go('op-lineup'); };
-  const back  = () => { setRun(r => ({ ...r, commandSubTab:'training' })); go('op-command'); };
+  const back  = () => { setRun(r => ({ ...r, commandSubTab:'training', trainingMode:'pvp' })); go('op-command'); };
   const proceed = () => {
     if (!canGo) return;
     setRun(r => ({ ...r, trainingConfig: { mode:'pvp', width, sideA: sideAId, sideB: sideBId, aiSkill:null } }));
@@ -2067,7 +2078,7 @@ const PvPSetup = ({ run, setRun, go }) => {
         padding:'0 24px', background:'linear-gradient(180deg, rgba(8,12,16,0.92), rgba(0,0,0,0.6))',
         borderBottom:'1px solid var(--abyss-4)' }}>
         <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-          <button className="btn ghost sm" onClick={back}>← Back to Link</button>
+          <button className="btn ghost sm" onClick={back}>← Back to PvP</button>
           <div>
             <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.3em',
               color:'var(--brass-dim)', textTransform:'uppercase' }}>Dev PvP · Arm the Board</div>
