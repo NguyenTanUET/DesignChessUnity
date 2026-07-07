@@ -100,6 +100,7 @@ const App = () => {
     <div style={{ position:'absolute', inset:0 }}>
       {screen === 'menu' && <MainMenu go={setScreen} setRun={setRun}/>}
       {screen === 'level-forge' && <LevelForge go={setScreen}/>}
+      {screen === 'unit-editor' && <UnitEditor go={setScreen}/>}
 
       {/* Operation Center suite */}
       {screen === 'op-hub' && run && <OperationCenter run={run} setRun={setRun} go={setScreen}/>}
@@ -130,6 +131,7 @@ const App = () => {
           style={{ background:'#000', color:'var(--bone-dim)', border:'1px solid var(--abyss-4)', fontSize:10, padding:'2px 6px', fontFamily:'JetBrains Mono, monospace' }}>
           <option value="menu">Menu</option>
           <option value="level-forge">Level Editor</option>
+          <option value="unit-editor">Unit Editor</option>
           <option value="op-hub">Op · Hub</option>
           <option value="op-follower">Op · Followers</option>
           <option value="op-trader">Op · Trader</option>

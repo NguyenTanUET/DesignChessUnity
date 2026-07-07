@@ -762,23 +762,24 @@ const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }
               borderBottom: r === h-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
               display:'grid', placeItems:'center',
             }}>
-            {/* formation: terrain wash + corner glyph + side-tinted frame */}
+            {/* formation — one signal per corner:
+                wash = terrain tint · top-right ribbon = SIDE · bottom-right badge = TYPE */}
             {!isBlocked && terr && (
               <>
                 <div style={{ position:'absolute', inset:0, pointerEvents:'none',
                   background:`${terr.color.replace(')',' / 0.16)')}` }}/>
                 {fmSide && (
-                  <div style={{ position:'absolute', inset:1, pointerEvents:'none',
-                    border:`1px solid ${fmSide.color}`, opacity:0.7 }}/>
+                  <div style={{ position:'absolute', top:0, right:0, width:0, height:0, pointerEvents:'none',
+                    borderTop:`${Math.max(9, Math.round(cell*0.32))}px solid ${fmSide.color}`,
+                    borderLeft:`${Math.max(9, Math.round(cell*0.32))}px solid transparent`,
+                    filter:`drop-shadow(0 0 4px ${fmSide.color})`, opacity:0.95 }}/>
                 )}
-                <div style={{ position:'absolute', bottom:1, right:3, fontFamily:'Cinzel, serif',
-                  fontSize:Math.max(10, cell*0.3), lineHeight:1, color:terr.color,
-                  textShadow:`0 0 6px ${terr.color}`, pointerEvents:'none' }}>{terr.glyph}</div>
-                {fmSide && (
-                  <div style={{ position:'absolute', top:1, left:3, fontFamily:'Cinzel, serif',
-                    fontSize:Math.max(8, cell*0.22), lineHeight:1, color:fmSide.color,
-                    textShadow:`0 0 5px ${fmSide.color}`, pointerEvents:'none' }}>{fmSide.glyph}</div>
-                )}
+                <div style={{ position:'absolute', bottom:1, right:1, pointerEvents:'none',
+                  minWidth:Math.max(13, Math.round(cell*0.36)), height:Math.max(13, Math.round(cell*0.36)),
+                  display:'grid', placeItems:'center', padding:'0 1px',
+                  background:'rgba(0,8,12,0.75)', border:`1px solid ${terr.color}`,
+                  fontFamily:'Cinzel, serif', fontSize:Math.max(9, Math.round(cell*0.24)), lineHeight:1,
+                  color:terr.color, textShadow:`0 0 6px ${terr.color}` }}>{terr.glyph}</div>
               </>
             )}
             {/* max-zone outline */}
@@ -791,20 +792,26 @@ const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }
               <div style={{ position:'absolute', inset:0, background:'oklch(0.82 0.16 188 / 0.14)',
                 pointerEvents:'none' }}/>
             )}
-            {/* objective mark + letter */}
+            {/* objective mark + letter — top-left, dark-backed so washes can't drown it */}
             {!isBlocked && isObj && (
-              <div style={{ position:'absolute', top:1, left:3, fontFamily:'JetBrains Mono, monospace',
-                fontSize:Math.max(9, cell*0.24), color:'var(--brass)',
-                textShadow:'0 0 8px var(--brass)', pointerEvents:'none' }}>
+              <div style={{ position:'absolute', top:1, left:1, pointerEvents:'none',
+                padding:'1px 3px', background:'rgba(0,8,12,0.75)', border:'1px solid var(--brass-deep)',
+                fontFamily:'JetBrains Mono, monospace', fontSize:Math.max(9, Math.round(cell*0.22)),
+                lineHeight:1, color:'var(--brass)', textShadow:'0 0 8px var(--brass)' }}>
                 ⚑{forgeMarkLetter(stage, key)}
               </div>
             )}
-            {/* enemy creature */}
+            {/* enemy creature — archetype colour carries IDENTITY, the coral
+                underline carries HOSTILITY (same accent-bar language as Sparring) */}
             {!isBlocked && enemyArch && (
-              <div style={{ position:'relative', fontFamily:'Cinzel, serif', fontSize:cell*0.6, lineHeight:1,
-                color:'var(--coral)', textShadow:'0 0 10px var(--coral), 0 2px 4px rgba(0,0,0,0.8)',
-                pointerEvents:'none' }}>
-                {enemyArch.glyph}
+              <div style={{ position:'relative', pointerEvents:'none', textAlign:'center', lineHeight:1 }}>
+                <div style={{ fontFamily:'Cinzel, serif', fontSize:cell*0.58,
+                  color:enemyArch.color,
+                  textShadow:`0 0 10px ${enemyArch.color}, 0 2px 4px rgba(0,0,0,0.85)` }}>
+                  {enemyArch.glyph}
+                </div>
+                <div style={{ height:Math.max(2, Math.round(cell*0.05)), margin:'1px auto 0', width:'68%',
+                  background:'var(--coral)', boxShadow:'0 0 6px var(--coral)' }}/>
               </div>
             )}
           </div>
