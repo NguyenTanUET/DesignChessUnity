@@ -50,6 +50,7 @@ const FORGE_TOOLS = [
   { id:'max',       glyph:'◇', label:'Max Zone', hint:'Furthest zone reachable during play.',            color:'var(--bio-dim)' },
   { id:'objective', glyph:'⚑', label:'Mark',     hint:'Objective marks (auto-lettered A, B, C…).',       color:'var(--brass)' },
   { id:'enemy',     glyph:'♛', label:'Enemy',    hint:'Place an enemy creature from the bestiary.',      color:'var(--coral)' },
+  { id:'ally',      glyph:'♕', label:'Ally',     hint:'Place an allied creature from the bestiary.',     color:'var(--bio)' },
   { id:'terrain',   glyph:'❄', label:'Formation',hint:'Choose a side, then a formation feature to lay on the square.',color:'oklch(0.75 0.1 210)' },
   { id:'erase',     glyph:'⌫', label:'Erase',    hint:'Clear everything from a square.',                 color:'var(--bone-dim)' },
 ];
@@ -60,7 +61,7 @@ const forgeDefaultStage = (label) => ({
   id: `st-${Math.random().toString(36).slice(2,8)}`,
   label, w:8, h:8,
   blocked:[], deploy:[], maxZone:[], objCells:[],
-  enemies:{}, terrain:{},
+  enemies:{}, allies:{}, terrain:{},
   objective:'exterminate', turns:20,
   routes:[],
 });
@@ -72,12 +73,13 @@ const forgeMigrate = (levels) => (levels || []).map(lvl => ({
   stages: (lvl.stages || []).map(s => {
     const objMap = { reach:'advance', regicide:'leader', annihilate:'exterminate', survive:'seize' };
     const legacyPiece = { P:'larva', N:'outrider', B:'prelate', R:'colossus', Q:'matriarch', K:'witch' };
-    const enemies = Object.fromEntries(Object.entries(s.enemies || {})
+    const normCreature = (m) => Object.fromEntries(Object.entries(m || {})
       .map(([k,v]) => [k, FOLLOWER_ARCHETYPES[v] ? v : (legacyPiece[v] || 'larva')]));
     return {
       ...s,
       objective: FORGE_OBJECTIVES.find(o => o.id === s.objective) ? s.objective : (objMap[s.objective] || 'exterminate'),
-      enemies,
+      enemies: normCreature(s.enemies),
+      allies: normCreature(s.allies),
       terrain: Object.fromEntries(Object.entries(s.terrain || {}).map(([k,v]) => [k, forgeFormationVal(v)])),
       turns: s.turns || 20,
       routes: s.routes || (s.next || []).map(t => ({ id:forgeRouteId(), when:'complete', cond:'', target:t })),
@@ -239,6 +241,7 @@ const ForgeEditor = ({ level, onChange, onDelete }) => {
   const [selId, setSelId] = React.useState(stages[0]?.id || null);
   const [tool, setTool] = React.useState('blocked');
   const [enemyType, setEnemyType] = React.useState(Object.keys(FOLLOWER_ARCHETYPES)[0]);
+  const [allyType,  setAllyType]  = React.useState(Object.keys(FOLLOWER_ARCHETYPES)[0]);
   const [terrainType, setTerrainType] = React.useState(FORGE_TERRAINS[0].id);
   const [terrainSide, setTerrainSide] = React.useState('ally');
   const stage = stages.find(s => s.id === selId) || stages[0] || null;
@@ -383,10 +386,12 @@ const ForgeEditor = ({ level, onChange, onDelete }) => {
           display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
           <ForgeToolbar tool={tool} setTool={setTool}
             enemyType={enemyType} setEnemyType={setEnemyType}
+            allyType={allyType} setAllyType={setAllyType}
             terrainType={terrainType} setTerrainType={setTerrainType}
             terrainSide={terrainSide} setTerrainSide={setTerrainSide}/>
           <ForgeBoard key={stage.id} stage={stage} tool={tool}
-            enemyType={enemyType} terrainType={terrainType} terrainSide={terrainSide}
+            enemyType={enemyType} allyType={allyType}
+            terrainType={terrainType} terrainSide={terrainSide}
             onEdit={(mut)=>updateStage(stage.id, mut)}/>
           <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
             letterSpacing:'0.18em', textAlign:'center' }}>
@@ -480,9 +485,14 @@ const ForgeFlowGraph = ({ stages, selId, onSelect }) => {
 // =============================================================================
 // TOOLBAR — with bestiary strip (enemy) and terrain strip
 // =============================================================================
-const ForgeToolbar = ({ tool, setTool, enemyType, setEnemyType, terrainType, setTerrainType, terrainSide, setTerrainSide }) => {
+const ForgeToolbar = ({ tool, setTool, enemyType, setEnemyType, allyType, setAllyType, terrainType, setTerrainType, terrainSide, setTerrainSide }) => {
   const active = FORGE_TOOLS.find(t => t.id === tool);
   const creatures = Object.values(FOLLOWER_ARCHETYPES);
+  // Enemy and Ally share the bestiary strip — only the accent and target state differ.
+  const isCreatureTool = tool === 'enemy' || tool === 'ally';
+  const creatureVal    = tool === 'ally' ? allyType : enemyType;
+  const setCreatureVal = tool === 'ally' ? setAllyType : setEnemyType;
+  const creatureAccent = tool === 'ally' ? 'var(--bio)' : 'var(--coral)';
 
   return (
     <div style={{ width:'100%', maxWidth:780 }}>
@@ -507,17 +517,17 @@ const ForgeToolbar = ({ tool, setTool, enemyType, setEnemyType, terrainType, set
       </div>
 
       {/* hint / sub-palette row */}
-      {tool === 'enemy' ? (
+      {isCreatureTool ? (
         <div style={{ display:'flex', gap:5, marginTop:8, flexWrap:'wrap' }}>
           {creatures.map(a => {
-            const isSel = enemyType === a.key;
+            const isSel = creatureVal === a.key;
             return (
-              <button key={a.key} onClick={()=>setEnemyType(a.key)} title={`${a.name} — ${a.role}`}
+              <button key={a.key} onClick={()=>setCreatureVal(a.key)} title={`${a.name} — ${a.role}`}
                 style={{
                   flex:'1 1 96px', padding:'6px 6px', display:'flex', alignItems:'center', gap:7,
                   background: isSel ? 'var(--abyss-3)' : 'var(--abyss-1)',
-                  border:`1px solid ${isSel ? 'var(--coral)' : 'var(--abyss-4)'}`,
-                  color: isSel ? 'var(--coral)' : 'var(--bone-dim)', textAlign:'left',
+                  border:`1px solid ${isSel ? creatureAccent : 'var(--abyss-4)'}`,
+                  color: isSel ? creatureAccent : 'var(--bone-dim)', textAlign:'left',
                 }}>
                 <span style={{ fontFamily:'Cinzel, serif', fontSize:18, lineHeight:1, color:a.color }}>{a.glyph}</span>
                 <span style={{ minWidth:0 }}>
@@ -594,7 +604,7 @@ const ForgeToolbar = ({ tool, setTool, enemyType, setEnemyType, terrainType, set
 // =============================================================================
 // BOARD PAINTER — click / drag paints with the active tool
 // =============================================================================
-const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }) => {
+const ForgeBoard = ({ stage, tool, enemyType, allyType, terrainType, terrainSide, onEdit }) => {
   const { w, h } = stage;
 
   // Fixed viewport: a 16×16-cell frame regardless of board size. Boards larger
@@ -641,13 +651,15 @@ const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }
       const dropKey = (m) => { const { [key]:_x, ...rest } = m; return rest; };
       if (tool === 'erase') {
         return { blocked:rem(cur.blocked), deploy:rem(cur.deploy), maxZone:rem(cur.maxZone),
-                 objCells:rem(cur.objCells), enemies:dropKey(cur.enemies), terrain:dropKey(cur.terrain) };
+                 objCells:rem(cur.objCells), enemies:dropKey(cur.enemies),
+                 allies:dropKey(cur.allies || {}), terrain:dropKey(cur.terrain) };
       }
       if (tool === 'blocked') {
         if (mode === 'rem') return { blocked: rem(cur.blocked) };
         // blocking a square sweeps everything else off it
         return { blocked:add(cur.blocked), deploy:rem(cur.deploy), maxZone:rem(cur.maxZone),
-                 objCells:rem(cur.objCells), enemies:dropKey(cur.enemies), terrain:dropKey(cur.terrain) };
+                 objCells:rem(cur.objCells), enemies:dropKey(cur.enemies),
+                 allies:dropKey(cur.allies || {}), terrain:dropKey(cur.terrain) };
       }
       if (cur.blocked.includes(key)) return {};          // can't paint onto blocked
       if (tool === 'deploy')    return { deploy:    mode==='add' ? add(cur.deploy)   : rem(cur.deploy) };
@@ -655,7 +667,12 @@ const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }
       if (tool === 'objective') return { objCells:  mode==='add' ? add(cur.objCells) : rem(cur.objCells) };
       if (tool === 'enemy') {
         if (mode === 'rem') return { enemies: dropKey(cur.enemies) };
-        return { enemies: { ...cur.enemies, [key]: enemyType } };
+        // one occupant per square — placing an enemy evicts any ally
+        return { enemies: { ...cur.enemies, [key]: enemyType }, allies: dropKey(cur.allies || {}) };
+      }
+      if (tool === 'ally') {
+        if (mode === 'rem') return { allies: dropKey(cur.allies || {}) };
+        return { allies: { ...(cur.allies || {}), [key]: allyType }, enemies: dropKey(cur.enemies) };
       }
       if (tool === 'terrain') {
         if (mode === 'rem') return { terrain: dropKey(cur.terrain) };
@@ -672,6 +689,7 @@ const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }
     if (tool === 'max')       return maxZone.has(key) ? 'rem' : 'add';
     if (tool === 'objective') return objSet.has(key)  ? 'rem' : 'add';
     if (tool === 'enemy')     return stage.enemies[key] === enemyType   ? 'rem' : 'add';
+    if (tool === 'ally')      return (stage.allies || {})[key] === allyType ? 'rem' : 'add';
     if (tool === 'terrain')   { const t = forgeFormationVal(stage.terrain[key]); return (t && t.type === terrainType && t.side === terrainSide) ? 'rem' : 'add'; }
     return 'add';
   };
@@ -739,6 +757,8 @@ const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }
         const inMax     = maxZone.has(key);
         const isObj     = objSet.has(key);
         const enemyArch = stage.enemies[key] ? FOLLOWER_ARCHETYPES[stage.enemies[key]] : null;
+        const allyArch  = (stage.allies || {})[key] ? FOLLOWER_ARCHETYPES[stage.allies[key]] : null;
+        const creature  = enemyArch || allyArch;
         const fmVal = stage.terrain[key] ? forgeFormationVal(stage.terrain[key]) : null;
         const terr = fmVal ? FORGE_TERRAINS.find(t => t.id === fmVal.type) : null;
         const fmSide = fmVal ? FORGE_SIDES.find(s => s.id === fmVal.side) : null;
@@ -751,7 +771,9 @@ const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }
               key,
               isBlocked && 'blocked', inDeploy && 'deploy', inMax && 'max zone',
               isObj && `mark ${forgeMarkLetter(stage, key)}`,
-              enemyArch && enemyArch.name, terr && `${fmSide?.label || ''} ${terr.name} — ${terr.effect}`,
+              enemyArch && `${enemyArch.name} · enemy`,
+              allyArch && `${allyArch.name} · ally`,
+              terr && `${fmSide?.label || ''} ${terr.name} — ${terr.effect}`,
             ].filter(Boolean).join(' · ')}
             style={{
               width:cell, height:cell, position:'relative', cursor:'crosshair',
@@ -801,17 +823,18 @@ const ForgeBoard = ({ stage, tool, enemyType, terrainType, terrainSide, onEdit }
                 ⚑{forgeMarkLetter(stage, key)}
               </div>
             )}
-            {/* enemy creature — archetype colour carries IDENTITY, the coral
-                underline carries HOSTILITY (same accent-bar language as Sparring) */}
-            {!isBlocked && enemyArch && (
+            {/* creature — archetype colour carries IDENTITY, the underline carries
+                SIDE (coral = enemy · bio = ally, same accent-bar language as Sparring) */}
+            {!isBlocked && creature && (
               <div style={{ position:'relative', pointerEvents:'none', textAlign:'center', lineHeight:1 }}>
                 <div style={{ fontFamily:'Cinzel, serif', fontSize:cell*0.58,
-                  color:enemyArch.color,
-                  textShadow:`0 0 10px ${enemyArch.color}, 0 2px 4px rgba(0,0,0,0.85)` }}>
-                  {enemyArch.glyph}
+                  color:creature.color,
+                  textShadow:`0 0 10px ${creature.color}, 0 2px 4px rgba(0,0,0,0.85)` }}>
+                  {creature.glyph}
                 </div>
                 <div style={{ height:Math.max(2, Math.round(cell*0.05)), margin:'1px auto 0', width:'68%',
-                  background:'var(--coral)', boxShadow:'0 0 6px var(--coral)' }}/>
+                  background: enemyArch ? 'var(--coral)' : 'var(--bio)',
+                  boxShadow: `0 0 6px ${enemyArch ? 'var(--coral)' : 'var(--bio)'}` }}/>
               </div>
             )}
           </div>
@@ -842,7 +865,7 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
       w, h,
       blocked: cur.blocked.filter(fits), deploy: cur.deploy.filter(fits),
       maxZone: cur.maxZone.filter(fits), objCells: cur.objCells.filter(fits),
-      enemies: fitMap(cur.enemies), terrain: fitMap(cur.terrain),
+      enemies: fitMap(cur.enemies), allies: fitMap(cur.allies || {}), terrain: fitMap(cur.terrain),
     }));
   };
 
@@ -1029,6 +1052,7 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
           ['Max Zone', stage.maxZone.length],
           ['Marks',    stage.objCells.length],
           ['Enemies',  Object.keys(stage.enemies).length],
+          ['Allies',   Object.keys(stage.allies || {}).length],
           ['Formation', Object.keys(stage.terrain).length],
         ].map(([k,v]) => (
           <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'4px 2px',
