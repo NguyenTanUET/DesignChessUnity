@@ -64,7 +64,10 @@ const forgeDefaultStage = (label) => ({
   enemies:{}, allies:{}, terrain:{},
   objective:'exterminate', turns:20,
   routes:[],
+  rewards:{ coral:0, dna:0, lumin:0, relics:[], augs:[], units:[] },
 });
+
+const forgeEmptyRewards = () => ({ coral:0, dna:0, lumin:0, relics:[], augs:[], units:[] });
 
 // Best-effort migration for levels saved by earlier Forge versions.
 const forgeMigrate = (levels) => (levels || []).map(lvl => ({
@@ -83,6 +86,7 @@ const forgeMigrate = (levels) => (levels || []).map(lvl => ({
       terrain: Object.fromEntries(Object.entries(s.terrain || {}).map(([k,v]) => [k, forgeFormationVal(v)])),
       turns: s.turns || 20,
       routes: s.routes || (s.next || []).map(t => ({ id:forgeRouteId(), when:'complete', cond:'', target:t })),
+      rewards: { ...forgeEmptyRewards(), ...(s.rewards || {}) },
     };
   }),
 }));
@@ -869,6 +873,15 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
     }));
   };
 
+  // --- rewards ---
+  const rewards = { ...forgeEmptyRewards(), ...(stage.rewards || {}) };
+  const setReward = (k, v) => onEdit(cur => ({
+    rewards: { ...forgeEmptyRewards(), ...(cur.rewards || {}), [k]: v },
+  }));
+  const addDrop = (k, id) => { if (id) setReward(k, [...rewards[k], id]); };
+  const removeDrop = (k, idx) => setReward(k, rewards[k].filter((_, i) => i !== idx));
+  const dropCount = rewards.relics.length + rewards.augs.length + rewards.units.length;
+
   // --- branch routes ---
   const addRoute = () => onEdit(cur => ({
     routes: [...cur.routes, { id:forgeRouteId(), when:'complete', cond:'', target: others[0]?.id || null }],
@@ -1041,6 +1054,111 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
               fontFamily:'Cinzel, serif', fontSize:11.5, letterSpacing:'0.06em' }}>
             + Add Route{others.length === 0 ? ' (add another stage first)' : ''}
           </button>
+        </div>
+      </div>
+
+      {/* === REWARDS · ON CLEAR === */}
+      <div>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
+          <div className="caps">Rewards · On Clear</div>
+          <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5,
+            color:'var(--bio-dim)', letterSpacing:'0.15em' }}>{dropCount} DROP{dropCount===1?'':'S'}</span>
+        </div>
+
+        {/* resources */}
+        <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:8 }}>
+          {[
+            { k:'coral', glyph:'◎', label:'Refined Coral', color:'oklch(0.72 0.12 35)' },
+            { k:'dna',   glyph:'✧', label:'DNA',           color:'oklch(0.72 0.14 150)' },
+            { k:'lumin', glyph:'◆', label:'Lumin',         color:'oklch(0.75 0.13 195)' },
+          ].map(res => (
+            <div key={res.k} style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontFamily:'Cinzel, serif', fontSize:14, color:res.color, width:16,
+                textAlign:'center' }}>{res.glyph}</span>
+              <span style={{ flex:1, fontFamily:'JetBrains Mono, monospace', fontSize:9,
+                letterSpacing:'0.16em', color:'var(--bone-dim)', textTransform:'uppercase' }}>{res.label}</span>
+              <input type="number" min={0} step={5} value={rewards[res.k]}
+                title={`${res.label} reward`}
+                onChange={e=>setReward(res.k, Math.max(0, Number(e.target.value) || 0))}
+                style={{ ...selStyle, width:72, flex:'0 0 72px', textAlign:'right',
+                  color: rewards[res.k] > 0 ? 'var(--bone)' : 'var(--bone-dim)' }}/>
+            </div>
+          ))}
+        </div>
+
+        {/* item drops — chips with remove */}
+        {dropCount > 0 && (
+          <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:8 }}>
+            {rewards.relics.map((id, i) => {
+              const r = OP_RELICS.find(x => x.id === id);
+              return (
+                <span key={`r${i}`} title={r?.desc}
+                  style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 7px',
+                    background:'var(--abyss-1)', border:'1px solid var(--brass-deep)',
+                    fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--brass)',
+                    letterSpacing:'0.08em' }}>
+                  {r?.glyph} {r?.name || id}
+                  <button onClick={()=>removeDrop('relics', i)} title="Remove"
+                    style={{ background:'transparent', border:'none', color:'var(--bone-dim)',
+                      cursor:'pointer', fontSize:10, padding:'0 1px', lineHeight:1 }}>×</button>
+                </span>
+              );
+            })}
+            {rewards.augs.map((id, i) => {
+              const a = AUGMENTATIONS.find(x => x.id === id);
+              const slot = a ? AUG_SLOTS.find(s => s.id === a.slot) : null;
+              return (
+                <span key={`a${i}`} title={a?.effect}
+                  style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 7px',
+                    background:'var(--abyss-1)', border:`1px solid ${slot?.color || 'var(--abyss-4)'}`,
+                    fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:slot?.color || 'var(--bone)',
+                    letterSpacing:'0.08em' }}>
+                  {slot?.glyph} {a?.name || id}
+                  <button onClick={()=>removeDrop('augs', i)} title="Remove"
+                    style={{ background:'transparent', border:'none', color:'var(--bone-dim)',
+                      cursor:'pointer', fontSize:10, padding:'0 1px', lineHeight:1 }}>×</button>
+                </span>
+              );
+            })}
+            {rewards.units.map((k, i) => {
+              const a = FOLLOWER_ARCHETYPES[k];
+              return (
+                <span key={`u${i}`} title={a?.desc}
+                  style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 7px',
+                    background:'var(--abyss-1)', border:`1px solid ${a?.color || 'var(--abyss-4)'}`,
+                    fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:a?.color || 'var(--bone)',
+                    letterSpacing:'0.08em' }}>
+                  {a?.glyph} {a?.name || k}
+                  <button onClick={()=>removeDrop('units', i)} title="Remove"
+                    style={{ background:'transparent', border:'none', color:'var(--bone-dim)',
+                      cursor:'pointer', fontSize:10, padding:'0 1px', lineHeight:1 }}>×</button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* add drops — pick from the game's pools (selects reset after adding) */}
+        <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+          <select value="" title="Add relic reward" style={selStyle}
+            onChange={e=>addDrop('relics', e.target.value)}>
+            <option value="">✠ + Relic reward…</option>
+            {OP_RELICS.map(r => <option key={r.id} value={r.id}>{r.glyph} {r.name} · T{r.tier}</option>)}
+          </select>
+          <select value="" title="Add augmentation reward" style={selStyle}
+            onChange={e=>addDrop('augs', e.target.value)}>
+            <option value="">⊕ + Augmentation reward…</option>
+            {AUGMENTATIONS.map(a => {
+              const slot = AUG_SLOTS.find(s => s.id === a.slot);
+              return <option key={a.id} value={a.id}>{slot?.glyph} {a.name} · {slot?.label} T{a.tier}</option>;
+            })}
+          </select>
+          <select value="" title="Add creature recruit reward" style={selStyle}
+            onChange={e=>addDrop('units', e.target.value)}>
+            <option value="">♙ + Creature recruit…</option>
+            {Object.values(FOLLOWER_ARCHETYPES).map(a =>
+              <option key={a.key} value={a.key}>{a.glyph} {a.name} · {a.role}</option>)}
+          </select>
         </div>
       </div>
 
