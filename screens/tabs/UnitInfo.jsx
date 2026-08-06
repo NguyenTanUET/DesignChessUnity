@@ -43,6 +43,21 @@ const UnitInfoTab = ({ run, setRun, sel, arch, go, togglePool, setSubTab }) => {
     }));
   };
 
+  // --- Classification (species, fixed) & Facet (one side of an opposed pair) ---
+  const cls       = classificationById(sel.classification || classificationFor(sel.archetype));
+  const clsValue  = classValueAt(cls, sel.evoTier);
+  const facetPair = resolveFacetPair(sel);
+  const pairSides = facetsOfPair(facetPair);
+  const chosenFacet = sel.facet ? facetById(sel.facet) : null;
+
+  const chooseFacet = (facetId) => {
+    setRun(r => ({
+      ...r,
+      roster: r.roster.map(f => f.instanceId === sel.instanceId
+        ? { ...f, facetPair: facetPair?.id || f.facetPair, facet: facetId } : f),
+    }));
+  };
+
   // Piece-type tag color map
   const pieceColors = {
     King:   { bg:'oklch(0.32 0.1 50 / 0.4)',  border:'var(--brass)',          text:'var(--brass)',           glyph:'♔' },
@@ -112,6 +127,109 @@ const UnitInfoTab = ({ run, setRun, sel, arch, go, togglePool, setSubTab }) => {
           <div style={{ marginTop:14, padding:'10px 14px', background:'var(--abyss-1)', border:'1px solid var(--abyss-3)',
             fontSize:13, color:'var(--bone)', lineHeight:1.5, fontStyle:'italic' }}>
             {evoData.effect}
+          </div>
+        </div>
+      </div>
+
+      {/* === CLASSIFICATION · FACET === */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1.25fr', gap:16, marginBottom:18 }}>
+
+        {/* CLASSIFICATION — species + its effect */}
+        <div style={{ padding:'16px 18px', background:'var(--abyss-1)',
+          border:`1px solid ${cls.color.replace(')',' / 0.45)')}`, borderTop:`3px solid ${cls.color}` }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <span style={{ fontFamily:'Cinzel, serif', fontSize:28, color:cls.color,
+              textShadow:`0 0 14px ${cls.color}`, width:32, textAlign:'center' }}>{cls.glyph}</span>
+            <div style={{ minWidth:0, flex:1 }}>
+              <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.25em',
+                color:'var(--bone-dim)', textTransform:'uppercase' }}>Classification · born to it</div>
+              <div style={{ fontFamily:'Cinzel, serif', fontSize:18, color:'var(--bone)', letterSpacing:'0.04em' }}>
+                {cls.name}
+              </div>
+            </div>
+            <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:cls.color,
+              letterSpacing:'0.15em', textTransform:'uppercase', alignSelf:'flex-end' }}>
+              {cls.stat} {clsValue}
+            </span>
+          </div>
+
+          <div style={{ marginTop:14, padding:'12px 14px', background:'var(--abyss-0)',
+            border:'1px solid var(--abyss-3)', borderLeft:`3px solid ${cls.color}`,
+            fontFamily:'Cormorant Garamond, serif', fontSize:13, color:'var(--bone)',
+            fontStyle:'italic', lineHeight:1.55 }}>
+            {cls.effect(clsValue)}
+          </div>
+
+          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bio-dim)',
+            letterSpacing:'0.15em', marginTop:8, textTransform:'uppercase' }}>
+            ‣ {cls.stat} rises each evolution · next E{sel.evoTier + 1} → {classValueAt(cls, sel.evoTier + 1)}
+          </div>
+        </div>
+
+        {/* FACET — one side of an opposed pair, the player's to commit */}
+        <div style={{ padding:'16px 18px', background:'var(--abyss-1)',
+          border:'1px solid var(--abyss-3)',
+          borderTop:`3px solid ${chosenFacet ? chosenFacet.color : 'var(--abyss-4)'}` }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
+            <div>
+              <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.25em',
+                color:'var(--bone-dim)', textTransform:'uppercase' }}>
+                Facet · {facetPair ? facetPair.name : 'Temperament'}
+              </div>
+              <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, fontStyle:'italic',
+                color:'var(--bone-dim)', marginTop:2 }}>
+                {facetPair ? facetPair.axis : 'Two natures pull against each other.'}
+              </div>
+            </div>
+            <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, letterSpacing:'0.18em',
+              color: chosenFacet ? 'var(--bio-dim)' : 'var(--brass)' }}>
+              {chosenFacet ? '◆ COMMITTED' : '○ CHOOSE ONE'}
+            </div>
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 26px 1fr', gap:8, alignItems:'stretch', marginTop:12 }}>
+            {pairSides.map((f, i) => {
+              const on = sel.facet === f.id;
+              const dim = !!sel.facet && !on;   // the road not taken
+              return (
+                <React.Fragment key={f.id}>
+                  {i === 1 && (
+                    <div style={{ display:'grid', placeItems:'center', fontFamily:'Cinzel, serif',
+                      fontSize:15, color:'var(--brass-dim)' }}>×</div>
+                  )}
+                  <button onClick={()=>chooseFacet(f.id)} title={f.blurb}
+                    style={{
+                      padding:'12px 12px', textAlign:'left', cursor:'pointer',
+                      background: on ? f.color.replace(')',' / 0.14)') : 'var(--abyss-0)',
+                      border:`1px solid ${on ? f.color : 'var(--abyss-4)'}`,
+                      color:'var(--bone)', opacity: dim ? 0.45 : 1, transition:'all 0.15s',
+                    }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ fontFamily:'Cinzel, serif', fontSize:19, color:f.color,
+                        textShadow: on ? `0 0 10px ${f.color}` : 'none' }}>{f.glyph}</span>
+                      <span style={{ fontFamily:'Cinzel, serif', fontSize:14, letterSpacing:'0.04em',
+                        color: on ? f.color : 'var(--bone)' }}>{f.name}</span>
+                      {on && <span style={{ marginLeft:'auto', fontSize:10, color:f.color }}>◆</span>}
+                    </div>
+                    <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:11.5, fontStyle:'italic',
+                      color:'var(--bone-dim)', marginTop:5, lineHeight:1.4 }}>
+                      {f.blurb}
+                    </div>
+                    <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12.5, color:'var(--bone)',
+                      marginTop:7, paddingTop:7, borderTop:'1px dashed var(--abyss-3)', lineHeight:1.5 }}>
+                      {f.desc(sel.evoTier)}
+                    </div>
+                  </button>
+                </React.Fragment>
+              );
+            })}
+          </div>
+
+          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
+            letterSpacing:'0.15em', marginTop:8, textTransform:'uppercase' }}>
+            {chosenFacet
+              ? `‣ ${chosenFacet.name} deepens each evolution${chosenFacet.kind === 'mixed' ? ' · its bane fades' : ''}`
+              : '‣ Only one nature may take root'}
           </div>
         </div>
       </div>

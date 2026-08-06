@@ -38,7 +38,8 @@ const Trader = ({ run, setRun, go }) => {
           evoTier: 0,
           augments: { optic:null, neural:null, blood:null, fin:null, chassis:null },
           classification: window.classificationFor(item.archetype), // fixed by species
-          facet: window.rollFacet(),                                 // random temperament on purchase
+          facetPair: window.rollFacetPair(),                         // opposed pair rolled on purchase
+          facet: null,                                               // player commits to one side later
           inPool: false,
         }];
       }

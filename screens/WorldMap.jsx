@@ -752,62 +752,21 @@ const CompanionPortrait = ({ cls, accent }) => {
 
 
 // =============== LINEUP MODAL ===============
+// Shows exactly what the chosen Assignment deploys: the lineup picked in the
+// Command Chamber (run.activeLineupId at run.lineupWidth) and that lineup's
+// single carry relic. No other relics, no grafted-augment listing.
 const LineupModal = ({ run, setRun, onClose, onConfirm }) => {
   const FA = window.FOLLOWER_ARCHETYPES || {};
   const OP_RELICS = window.OP_RELICS || [];
-  const AUGMENTATIONS = window.AUGMENTATIONS || [];
-  const AUG_SLOTS = window.AUG_SLOTS || [];
   const roster = run.roster || [];
-  const relicsOwned = run.relicsOwned || [];
-  const relicsLoadout = run.relicsLoadout || [];
-  const augInventory = run.augInventory || [];
-  const poolCap = 20;
-  const inPool = roster.filter(f => f.inPool);
 
-  // Which follower is being edited for augments (null = list view)
-  const [editId, setEditId] = React.useState(null);
-  const editFollower = roster.find(f => f.instanceId === editId);
-  // Which slot's picker is open
-  const [pickSlot, setPickSlot] = React.useState(null);
-
-  const togglePool = (id) => setRun(r => {
-    const cur = r.roster.filter(f => f.inPool).length;
-    return { ...r, roster: r.roster.map(f => {
-      if (f.instanceId !== id) return f;
-      if (!f.inPool && cur >= poolCap) return f;
-      return { ...f, inPool: !f.inPool };
-    })};
-  });
-  const toggleRelic = (id) => setRun(r => {
-    const load = r.relicsLoadout || [];
-    if (load.includes(id)) return { ...r, relicsLoadout: load.filter(x => x !== id) };
-    if (load.length >= 3) return r;
-    return { ...r, relicsLoadout: [...load, id] };
-  });
-  const installAug = (augId, slot) => {
-    setRun(r => ({
-      ...r,
-      roster: r.roster.map(f => f.instanceId === editId
-        ? { ...f, augments: { ...f.augments, [slot]: augId } }
-        : f)
-    }));
-    setPickSlot(null);
-  };
-  const removeAug = (slot) => {
-    setRun(r => ({
-      ...r,
-      roster: r.roster.map(f => f.instanceId === editId
-        ? { ...f, augments: { ...f.augments, [slot]: null } }
-        : f)
-    }));
-  };
-
-  // Build set of aug IDs installed on OTHER followers (unavailable)
-  const installedElsewhere = new Set();
-  roster.forEach(f => {
-    if (f.instanceId === editId) return;
-    Object.values(f.augments||{}).forEach(a => { if (a) installedElsewhere.add(a); });
-  });
+  const width   = run.lineupWidth || 6;
+  const pool    = (run.lineups || {})[width] || [];
+  const lineup  = pool.find(l => l.id === run.activeLineupId) || null;
+  const board   = lineup?.board || {};
+  const entries = Object.entries(board);
+  const carryRelic = lineup?.carryRelicId
+    ? OP_RELICS.find(r => r.id === lineup.carryRelicId) : null;
 
   return (
     <div onClick={onClose} style={{
@@ -830,152 +789,110 @@ const LineupModal = ({ run, setRun, onClose, onConfirm }) => {
               ◆ DEPLOYMENT LINEUP
             </div>
             <div style={{ fontFamily:'Cinzel, serif', fontSize:22, color:'var(--bone)', letterSpacing:'0.04em', marginTop:2 }}>
-              {editFollower ? `Graft Augments · ${editFollower.name}` : 'Muster the Brood'}
+              {lineup ? `${lineup.name} · W${width}` : 'No Lineup Chosen'}
             </div>
           </div>
           <div style={{ display:'flex', gap:8 }}>
-            {editFollower && (
-              <button onClick={()=>{ setEditId(null); setPickSlot(null); }} className="btn ghost sm">◂ BACK</button>
-            )}
             <button onClick={onClose} className="btn ghost sm">✕ CLOSE</button>
           </div>
         </div>
 
-        {editFollower ? (
-          /* ---------- AUGMENT EDITOR ---------- */
-          <AugmentEditor
-            follower={editFollower}
-            AUG_SLOTS={AUG_SLOTS}
-            AUGMENTATIONS={AUGMENTATIONS}
-            FA={FA}
-            augInventory={augInventory}
-            installedElsewhere={installedElsewhere}
-            pickSlot={pickSlot}
-            setPickSlot={setPickSlot}
-            onInstall={installAug}
-            onRemove={removeAug}
-          />
+        {!lineup ? (
+          /* ---------- NO LINEUP FALLBACK ---------- */
+          <div style={{ display:'grid', placeItems:'center', padding:40, textAlign:'center' }}>
+            <div>
+              <div style={{ fontFamily:'Cinzel, serif', fontSize:40, color:'var(--brass-deep)' }}>◈</div>
+              <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:16, fontStyle:'italic',
+                color:'var(--bone-dim)', lineHeight:1.6, marginTop:10, maxWidth:440 }}>
+                No lineup was bound to this assignment. Return to the Command Chamber
+                and undertake it with a W{width} lineup arrayed.
+              </div>
+            </div>
+          </div>
         ) : (
-          /* ---------- LINEUP VIEW ---------- */
-          <div style={{ display:'grid', gridTemplateColumns:'1.1fr 1.2fr 1fr', gap:0, minHeight:0 }}>
+          /* ---------- DEPLOYMENT VIEW — the chosen lineup only ---------- */
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1.4fr 1fr', gap:0, minHeight:0 }}>
+            {/* On Field — exactly what stands on this plan */}
             <div style={{ borderRight:'1px solid var(--abyss-4)', padding:'16px 16px 8px', display:'flex', flexDirection:'column', minHeight:0 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:10 }}>
-                <div className="caps">Followers</div>
-                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--bone-dim)' }}>{inPool.length}/{poolCap}</div>
+                <div className="caps">On Field</div>
+                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--bone-dim)' }}>{entries.length} DEPLOYED</div>
               </div>
               <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:4, paddingRight:4 }}>
-                {roster.length === 0 && (
-                  <div style={{ padding:16, border:'1px dashed var(--abyss-4)', textAlign:'center', color:'var(--bone-dim)', fontStyle:'italic', fontSize:11 }}>No followers in brood.</div>
+                {entries.length === 0 && (
+                  <div style={{ padding:16, border:'1px dashed var(--abyss-4)', textAlign:'center', color:'var(--bone-dim)', fontStyle:'italic', fontSize:11 }}>Nothing arrayed on this plan.</div>
                 )}
-                {roster.map(f => {
+                {entries.map(([sqId, instId]) => {
+                  const f = roster.find(x => x.instanceId === instId);
+                  if (!f) return null;
                   const a = FA[f.archetype] || { glyph:'?', color:'var(--bone)' };
-                  const augCount = Object.values(f.augments||{}).filter(Boolean).length;
+                  const m = sqId.match(/r(\d+)c(\d+)/);
+                  const rank = m ? (m[1] === '0' ? 'BACK' : 'FRONT') : '';
+                  const col = m ? `C${parseInt(m[2],10)+1}` : '';
                   return (
-                    <div key={f.instanceId} style={{
-                      display:'flex', alignItems:'stretch', gap:0,
-                      background: f.inPool ? 'linear-gradient(90deg, var(--abyss-3), var(--abyss-2))' : 'transparent',
-                      border:'1px solid', borderColor: f.inPool ? a.color : 'var(--abyss-3)',
+                    <div key={sqId} style={{
+                      display:'flex', alignItems:'center', gap:8, padding:'7px 9px',
+                      background:'var(--abyss-1)', border:'1px solid var(--abyss-3)',
+                      borderLeft:`3px solid ${a.color}`,
                     }}>
-                      <div onClick={()=>togglePool(f.instanceId)} title={f.name} style={{
-                        flex:1, display:'flex', alignItems:'center', gap:8, padding:'7px 9px', cursor:'pointer', minWidth:0,
-                      }}>
-                        <div style={{ fontSize:16, color:a.color, fontFamily:'Cinzel, serif', width:20, textAlign:'center' }}>{a.glyph}</div>
-                        <div style={{ flex:1, minWidth:0, fontFamily:'Cinzel, serif', fontSize:12, color:'var(--bone)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{f.name}</div>
-                        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)' }}>E{f.evoTier}</div>
-                        <div style={{ width:14, height:14, border:`1px solid ${f.inPool ? 'var(--brass)' : 'var(--abyss-4)'}`,
-                          background: f.inPool ? 'var(--brass-deep)' : 'transparent',
-                          fontSize:9, display:'grid', placeItems:'center', color: f.inPool ? 'var(--abyss-0)':'transparent' }}>✓</div>
+                      <div style={{ fontSize:16, color:a.color, fontFamily:'Cinzel, serif', width:20, textAlign:'center' }}>{a.glyph}</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontFamily:'Cinzel, serif', fontSize:12, color:'var(--bone)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{f.name}</div>
+                        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, color:'var(--bone-dim)', letterSpacing:'0.18em' }}>{rank} · {col}</div>
                       </div>
-                      <button onClick={()=>setEditId(f.instanceId)}
-                        title="Graft augments"
-                        style={{
-                          width:42, display:'grid', placeItems:'center',
-                          background:'var(--abyss-2)', border:'none', borderLeft:'1px solid var(--abyss-4)',
-                          color: augCount>0 ? 'oklch(0.75 0.13 195)' : 'var(--bone-dim)',
-                          cursor:'pointer', position:'relative',
-                          fontFamily:'JetBrains Mono, monospace', fontSize:10, letterSpacing:'0.1em',
-                        }}>
-                        ⌘
-                        <span style={{ position:'absolute', bottom:2, right:3, fontSize:8, color: augCount>0 ? 'var(--brass)' : 'var(--bone-dim)' }}>{augCount}/5</span>
-                      </button>
+                      <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)' }}>E{f.evoTier}</div>
                     </div>
                   );
                 })}
               </div>
               <div style={{ marginTop:10, fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:11, color:'var(--bone-dim)', textAlign:'center' }}>
-                Click row to toggle deployment · Click ⌘ to graft augments
+                Arrayed in the Command Chamber · fixed for this assignment
               </div>
             </div>
 
+            {/* Battle Formation — the plan's true squares */}
             <div style={{ padding:'18px 14px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
               background:'radial-gradient(ellipse at center, var(--abyss-1), var(--abyss-0))' }}>
               <div className="caps" style={{ marginBottom:12 }}>Battle Formation</div>
-              <LineupBoard followers={inPool}/>
+              <LineupBoard board={board} width={width} roster={roster}/>
               <div style={{ marginTop:14, fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:12, color:'var(--bone-dim)', textAlign:'center', maxWidth:320 }}>
-                Followers placed on the board when the tide begins. Empty squares are drawn from reserves.
+                Exactly as arrayed on &ldquo;{lineup.name}&rdquo;. Empty squares are drawn from reserves.
               </div>
             </div>
 
+            {/* Carry Relic — this lineup's single relic, nothing else */}
             <div style={{ borderLeft:'1px solid var(--abyss-4)', padding:'16px 16px 8px', display:'flex', flexDirection:'column', minHeight:0 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:10 }}>
-                <div className="caps">Relics</div>
-                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--bone-dim)' }}>{relicsLoadout.length}/3</div>
+                <div className="caps">Carry Relic</div>
+                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--bone-dim)' }}>{carryRelic ? '1/1' : '0/1'}</div>
               </div>
-              <div style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:16, maxHeight:220, overflowY:'auto', paddingRight:4 }}>
-                {relicsOwned.length === 0 && (
-                  <div style={{ padding:10, border:'1px dashed var(--abyss-4)', textAlign:'center', color:'var(--bone-dim)', fontStyle:'italic', fontSize:11 }}>Reliquary empty.</div>
-                )}
-                {relicsOwned.map(id => {
-                  const rel = OP_RELICS.find(r => r.id === id);
-                  if (!rel) return null;
-                  const carried = relicsLoadout.includes(id);
-                  return (
-                    <div key={id} onClick={()=>toggleRelic(id)} style={{
-                      display:'flex', alignItems:'center', gap:8, padding:'7px 9px', cursor:'pointer',
-                      background: carried ? 'linear-gradient(90deg, var(--abyss-3), var(--abyss-2))' : 'transparent',
-                      border:'1px solid', borderColor: carried ? 'var(--brass)' : 'var(--abyss-3)',
-                    }}>
-                      <div style={{ fontSize:14, color: carried?'var(--brass)':'var(--bone-dim)', width:18, textAlign:'center' }}>{rel.glyph}</div>
-                      <div style={{ flex:1, minWidth:0, fontFamily:'Cinzel, serif', fontSize:12, color:'var(--bone)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{rel.name}</div>
-                      <div style={{ width:14, height:14, border:`1px solid ${carried ? 'var(--brass)' : 'var(--abyss-4)'}`,
-                        background: carried ? 'var(--brass-deep)' : 'transparent',
-                        fontSize:9, display:'grid', placeItems:'center', color: carried ? 'var(--abyss-0)':'transparent' }}>✓</div>
+              {carryRelic ? (
+                <div style={{ padding:'14px 14px', background:'linear-gradient(180deg, var(--abyss-2), var(--abyss-1))',
+                  border:'1px solid var(--brass)', borderLeft:'3px solid var(--brass)' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                    <div style={{ fontSize:30, fontFamily:'Cinzel, serif', color:'var(--brass)',
+                      textShadow:'0 0 14px var(--brass)', width:36, textAlign:'center' }}>{carryRelic.glyph}</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontFamily:'Cinzel, serif', fontSize:14, color:'var(--bone)', letterSpacing:'0.04em' }}>{carryRelic.name}</div>
+                      <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)', letterSpacing:'0.18em', textTransform:'uppercase', marginTop:3 }}>
+                        T{carryRelic.tier} · {carryRelic.rarity}
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
-
-              <div className="caps" style={{ marginBottom:10 }}>Grafted Augments</div>
-              <div style={{ flex:1, overflowY:'auto', paddingRight:4 }}>
-                {(() => {
-                  const entries = [];
-                  inPool.forEach(f => {
-                    Object.entries(f.augments||{}).forEach(([slot, augId]) => {
-                      if (!augId) return;
-                      const aug = AUGMENTATIONS.find(a => a.id === augId);
-                      if (aug) entries.push({ f, aug, slot });
-                    });
-                  });
-                  if (entries.length === 0) return (
-                    <div style={{ padding:12, border:'1px dashed var(--abyss-4)', textAlign:'center', color:'var(--bone-dim)', fontStyle:'italic', fontSize:11 }}>
-                      No augments grafted.
+                  </div>
+                  {carryRelic.desc && (
+                    <div style={{ marginTop:10, fontFamily:'Cormorant Garamond, serif', fontSize:12.5, color:'var(--bone-dim)', fontStyle:'italic', lineHeight:1.5 }}>
+                      {carryRelic.desc}
                     </div>
-                  );
-                  return (
-                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                      {entries.map((e,i) => (
-                        <div key={i} style={{ padding:'6px 9px', border:'1px solid var(--abyss-3)',
-                          background:'var(--abyss-1)', display:'flex', gap:8, alignItems:'center' }}>
-                          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, color:'var(--bio-dim)', letterSpacing:'0.15em', textTransform:'uppercase', width:44 }}>{e.slot}</div>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontFamily:'Cinzel, serif', fontSize:11, color:'var(--bone)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{e.aug.name}</div>
-                            <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:10, color:'var(--bone-dim)', fontStyle:'italic', lineHeight:1.3, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{e.f.name}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
+                  )}
+                </div>
+              ) : (
+                <div style={{ padding:'22px 14px', border:'1px dashed var(--abyss-4)', textAlign:'center',
+                  color:'var(--bone-dim)', fontStyle:'italic', fontSize:12, fontFamily:'Cormorant Garamond, serif', lineHeight:1.5 }}>
+                  This lineup carries no relic.<br/>One may be chosen on its plan in the Lineup tab.
+                </div>
+              )}
+              <div style={{ marginTop:10, fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bio-dim)', letterSpacing:'0.15em', textAlign:'center' }}>
+                ‣ ONE RELIC PER LINEUP
               </div>
             </div>
           </div>
@@ -985,53 +902,46 @@ const LineupModal = ({ run, setRun, onClose, onConfirm }) => {
           display:'flex', justifyContent:'space-between', alignItems:'center',
           background:'linear-gradient(0deg, var(--abyss-2), transparent)' }}>
           <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, fontStyle:'italic', color:'var(--bone-dim)' }}>
-            {editFollower
-              ? `Inventory: ${augInventory.length} augment${augInventory.length===1?'':'s'} available.`
-              : (inPool.length === 0 ? 'Select at least one follower.' : `Deploying ${inPool.length} follower${inPool.length>1?'s':''} · ${relicsLoadout.length} relic${relicsLoadout.length===1?'':'s'}.`)}
+            {!lineup
+              ? 'No lineup bound to this assignment.'
+              : `Deploying ${entries.length} follower${entries.length===1?'':'s'} · relic: ${carryRelic ? carryRelic.name : 'none'}.`}
           </div>
-          {!editFollower && (
-            <button className="btn primary" disabled={inPool.length===0} onClick={onConfirm}
-              style={{ padding:'12px 28px', fontSize:13 }}>◈ CONFIRM LINEUP</button>
-          )}
+          <button className="btn primary" disabled={!lineup || entries.length===0} onClick={onConfirm}
+            style={{ padding:'12px 28px', fontSize:13 }}>◈ CONFIRM LINEUP</button>
         </div>
       </div>
     </div>
   );
 };
 
-// Per-follower augment editor — 5 slot rows, click to open picker
-const LineupBoard = ({ followers }) => {
+// Formation preview — the chosen lineup's TRUE board: width × 2 ranks, with
+// every follower on the exact square it was arrayed on in the Command Chamber.
+const LineupBoard = ({ board, width, roster }) => {
   const FA = window.FOLLOWER_ARCHETYPES || {};
-  const pawns = followers.filter(f => f.archetype === 'larva');
-  const majors = followers.filter(f => f.archetype !== 'larva');
-  const squares = [];
-  for (let r=0; r<8; r++) {
-    for (let c=0; c<8; c++) {
-      let occupant = null;
-      if (r === 7 && c < majors.length) occupant = majors[c];
-      if (r === 6 && c < pawns.length) occupant = pawns[c];
-      squares.push({ r, c, occupant });
-    }
-  }
-  const cell = 40;
+  const cell = width <= 4 ? 60 : width <= 6 ? 52 : width <= 8 ? 44 : 38;
+  const cells = [];
+  for (let r=0; r<2; r++) for (let c=0; c<width; c++) cells.push({ r, c, id:`r${r}c${c}` });
   return (
     <div style={{
-      display:'grid', gridTemplateColumns:`repeat(8, ${cell}px)`, gridTemplateRows:`repeat(8, ${cell}px)`,
+      display:'grid', gridTemplateColumns:`repeat(${width}, ${cell}px)`, gridTemplateRows:`repeat(2, ${cell}px)`,
       border:'1px solid var(--brass-deep)', boxShadow:'0 8px 30px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,0,0,0.5)',
     }}>
-      {squares.map(sq => {
+      {cells.map(sq => {
         const dark = (sq.r + sq.c) % 2 === 1;
-        const a = sq.occupant ? (FA[sq.occupant.archetype] || {}) : null;
+        const f = board[sq.id] ? roster.find(x => x.instanceId === board[sq.id]) : null;
+        const a = f ? (FA[f.archetype] || {}) : null;
         return (
-          <div key={`${sq.r}-${sq.c}`} style={{
-            width:cell, height:cell,
-            background: dark ? 'oklch(0.14 0.02 220)' : 'oklch(0.22 0.03 220)',
-            display:'grid', placeItems:'center', position:'relative',
-            borderRight: sq.c===7 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
-            borderBottom: sq.r===7 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
-          }}>
+          <div key={sq.id}
+            title={f ? f.name : `${sq.r === 0 ? 'BACK' : 'FRONT'} · C${sq.c+1}`}
+            style={{
+              width:cell, height:cell,
+              background: dark ? 'oklch(0.14 0.02 220)' : 'oklch(0.22 0.03 220)',
+              display:'grid', placeItems:'center', position:'relative',
+              borderRight: sq.c===width-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
+              borderBottom: sq.r===1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
+            }}>
             {a && (
-              <div style={{ fontFamily:'Cinzel, serif', fontSize: sq.occupant.archetype==='larva'?16:20,
+              <div style={{ fontFamily:'Cinzel, serif', fontSize: f.archetype==='larva' ? cell*0.42 : cell*0.55,
                 color: a.color, textShadow:`0 0 8px ${a.color}` }}>
                 {a.glyph}
               </div>

@@ -1,5 +1,12 @@
-// Match — an abyssal hunt. Pieces are creatures carved from bone & coral,
-// board is a sunken reef slab, frame is brass + barnacle, midline a bioluminescent rift.
+// Match — an abyssal hunt, played on a FLAT 2D board: top-down, true squares,
+// solid fills. Colour (not depth) carries every piece of information.
+const CELL = 64;
+const SQ_LIGHT = 'oklch(0.40 0.035 200)';
+const SQ_DARK  = 'oklch(0.16 0.030 218)';
+// One solid silhouette set for BOTH sides — identical shapes read faster than
+// hollow-vs-filled; the fill colour is what tells the sides apart.
+const SOLID_GLYPH = { K:'♚', Q:'♛', R:'♜', B:'♝', N:'♞', P:'♟', W:'♛', A:'♝', G:'♞', S:'♜' };
+
 const Match = ({ run, enemy, node, onWin, onLose, boardSize }) => {
   const N = boardSize || (node?.type === 'boss' ? 8 : node?.type === 'elite' ? 8 : enemy?.board?.startsWith('6') ? 6 : enemy?.board?.startsWith('7') ? 7 : 8);
   const [board, setBoard] = React.useState(() => setupBoard(N, run));
@@ -117,13 +124,12 @@ const Match = ({ run, enemy, node, onWin, onLose, boardSize }) => {
 
   return (
     <div className="screen" style={{ position:'absolute', inset:0,
-      background: `
-        radial-gradient(ellipse at 50% 30%, oklch(0.22 0.06 200) 0%, oklch(0.1 0.03 215) 55%, oklch(0.04 0.01 225) 100%)
-      `,
+      // flat backdrop — the board is the figure, this is only ground
+      background:'linear-gradient(180deg, oklch(0.14 0.03 208), oklch(0.07 0.02 222))',
       overflow:'hidden'
     }}>
-      {/* light shafts */}
-      <svg viewBox="0 0 1440 900" style={{ position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none', opacity:0.5 }} preserveAspectRatio="xMidYMid slice">
+      {/* light shafts — dialled far back so they never compete with the board */}
+      <svg viewBox="0 0 1440 900" style={{ position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none', opacity:0.18 }} preserveAspectRatio="xMidYMid slice">
         <defs>
           <linearGradient id="mshaft" x1="50%" y1="0%" x2="50%" y2="100%">
             <stop offset="0%" stopColor="oklch(0.9 0.08 190)" stopOpacity="0.25"/>
@@ -138,14 +144,12 @@ const Match = ({ run, enemy, node, onWin, onLose, boardSize }) => {
       {/* silt / noise */}
       <div style={{ position:'absolute', inset:0, pointerEvents:'none',
         background:`url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence baseFrequency='0.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.45 0 0 0 0 0.5 0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")`,
-        mixBlendMode:'screen', opacity:0.5
+        mixBlendMode:'screen', opacity:0.2
       }}/>
-      <div style={{ position:'absolute', inset:0, pointerEvents:'none',
-        background:'radial-gradient(ellipse at 50% 70%, rgba(0,0,0,0.55) 0%, transparent 60%)' }}/>
 
       {/* plankton */}
       <div className="plankton">
-        {Array.from({length:26}).map((_,i)=>(
+        {Array.from({length:14}).map((_,i)=>(
           <span key={i} style={{
             left:`${(i*151)%100}%`,
             animationDuration:`${20+(i%6)*3}s`,
@@ -163,21 +167,19 @@ const Match = ({ run, enemy, node, onWin, onLose, boardSize }) => {
           </span>
           <div style={{ display:'flex', gap:2 }}>
             {captured.black.slice(-3).map((t,i) => (
-              <span key={i} style={{ fontSize:16, color:'oklch(0.15 0.02 215)' }}>{GLYPHS.black[t]||'♟'}</span>
+              <span key={i} style={{ fontSize:16, color:'var(--coral)' }}>{SOLID_GLYPH[t]||'♟'}</span>
             ))}
           </div>
         </div>
-        <div style={{ width:46, height:46, borderRadius:'50%',
-          background:'radial-gradient(circle at 35% 30%, oklch(0.28 0.05 200), oklch(0.06 0.01 220))',
-          border:'2px solid oklch(0.04 0.01 225)',
-          boxShadow:'0 2px 10px rgba(0,0,0,0.8), inset 0 -2px 4px rgba(160,200,220,0.12), 0 0 18px rgba(30,120,150,0.4)',
+        <div style={{ width:44, height:44,
+          background:'oklch(0.11 0.02 218)', border:'1px solid var(--brass-deep)',
           display:'grid', placeItems:'center', fontFamily:'Cinzel, serif', color:'var(--brass)', fontSize:20 }}>
-          ♔
+          ♚
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:6, fontFamily:'Cinzel, serif' }}>
           <div style={{ display:'flex', gap:2 }}>
             {captured.white.slice(-3).map((t,i) => (
-              <span key={i} style={{ fontSize:16, color:'var(--bone)' }}>{GLYPHS.white[t]||'♙'}</span>
+              <span key={i} style={{ fontSize:16, color:'var(--bone)' }}>{SOLID_GLYPH[t]||'♟'}</span>
             ))}
           </div>
           <span style={{ color:'var(--coral)', fontSize:24, fontWeight:600, textShadow:'0 0 10px var(--coral), 0 1px 2px rgba(0,0,0,0.9)' }}>
@@ -242,59 +244,67 @@ const Match = ({ run, enemy, node, onWin, onLose, boardSize }) => {
         </div>
       </div>
 
-      {/* BOARD */}
-      <div style={{ position:'absolute', inset:0, display:'grid', placeItems:'center', perspective:'1400px', zIndex:2 }}>
-        <div style={{ transform: 'rotateX(52deg)', transformStyle: 'preserve-3d', position: 'relative' }}>
-          <BoardFrame N={N}>
-            <div className="board3d" style={{
-              display:'grid',
-              gridTemplateColumns:`repeat(${N}, 64px)`,
-              gridTemplateRows:`repeat(${N}, 64px)`,
-              position:'relative',
-              boxShadow:'0 0 0 1px rgba(0,0,0,0.5)',
-            }}>
-              {board.map((row, r) => row.map((p, c) => {
-                const isLight = (r+c) % 2 === 0;
-                const key = `${r}-${c}`;
-                const isSel = sel && sel.r===r && sel.c===c;
-                const isMove = moveSet.has(key) && !captureSet.has(key);
-                const isCap = captureSet.has(key);
-                const isLast = history.length>0 && ((history[history.length-1].to.r===r && history[history.length-1].to.c===c));
-                return (
-                  <div key={key} onClick={()=>sqClick(r,c)}
-                    style={{
-                      position:'relative',
-                      background: isLight
-                        ? 'linear-gradient(135deg, oklch(0.42 0.04 200), oklch(0.36 0.035 205))'
-                        : 'linear-gradient(135deg, oklch(0.18 0.035 215), oklch(0.12 0.025 220))',
-                      boxShadow: isSel ? 'inset 0 0 0 3px var(--bio), inset 0 0 12px rgba(90,200,220,0.5)'
-                                : isMove ? 'inset 0 0 0 2px rgba(120,220,240,0.5)'
-                                : isCap ? 'inset 0 0 0 3px var(--coral), inset 0 0 14px rgba(224,75,58,0.5)'
-                                : isLast ? 'inset 0 0 0 2px rgba(120,220,240,0.3)'
-                                : 'inset 0 0 0 1px rgba(0,0,0,0.3)',
-                      cursor: (isMove||isCap||isSel|| (p&&p.color==='white')) ? 'pointer' : 'default',
-                    }}
-                  >
-                    {isMove && !p && (
-                      <div style={{ position:'absolute', inset:0, margin:'auto', width:14, height:14, borderRadius:'50%',
-                        background:'var(--bio)', opacity:0.6,
-                        boxShadow:'0 0 8px var(--bio)' }}/>
-                    )}
-                    {p && <PieceMini piece={p} n={N}/>}
-                  </div>
-                );
-              }))}
-              {/* bioluminescent midline rift */}
-              <div style={{
-                position:'absolute', left:0, right:0,
-                top: `${(N/2) * 64}px`, height: 3,
-                background: 'linear-gradient(90deg, transparent, var(--bio) 10%, oklch(0.9 0.12 190) 50%, var(--bio) 90%, transparent)',
-                boxShadow:'0 0 12px var(--bio), 0 0 24px rgba(90,200,220,0.6)',
-                zIndex: 5, pointerEvents:'none',
-              }}/>
-            </div>
-          </BoardFrame>
-        </div>
+      {/* BOARD — flat 2D, read top-down. No tilt, no perspective: every square is
+          a true square and no piece ever overlaps the rank behind it. */}
+      <div style={{ position:'absolute', inset:0, display:'grid', placeItems:'center', zIndex:2 }}>
+        <BoardFrame N={N}>
+          <div style={{
+            display:'grid',
+            gridTemplateColumns:`repeat(${N}, ${CELL}px)`,
+            gridTemplateRows:`repeat(${N}, ${CELL}px)`,
+            position:'relative',
+            border:'1px solid oklch(0.06 0.01 225)',
+          }}>
+            {board.map((row, r) => row.map((p, c) => {
+              const isLight = (r+c) % 2 === 0;
+              const key = `${r}-${c}`;
+              const isSel = sel && sel.r===r && sel.c===c;
+              const isMove = moveSet.has(key) && !captureSet.has(key);
+              const isCap = captureSet.has(key);
+              const isLast = history.length>0 && ((history[history.length-1].to.r===r && history[history.length-1].to.c===c));
+              return (
+                <div key={key} onClick={()=>sqClick(r,c)}
+                  style={{
+                    position:'relative', width:CELL, height:CELL,
+                    display:'grid', placeItems:'center',
+                    // flat, solid squares — no gradients to muddy the contrast
+                    background: isLight ? SQ_LIGHT : SQ_DARK,
+                    cursor: (isMove||isCap||isSel|| (p&&p.color==='white')) ? 'pointer' : 'default',
+                  }}
+                >
+                  {/* last move — faint flat wash */}
+                  {isLast && (
+                    <div style={{ position:'absolute', inset:0, background:'oklch(0.78 0.14 188 / 0.16)',
+                      pointerEvents:'none' }}/>
+                  )}
+                  {/* selected — solid ring */}
+                  {isSel && (
+                    <div style={{ position:'absolute', inset:0, border:'3px solid var(--bio)',
+                      pointerEvents:'none' }}/>
+                  )}
+                  {/* capture target — coral ring */}
+                  {isCap && (
+                    <div style={{ position:'absolute', inset:0, border:'3px solid var(--coral)',
+                      pointerEvents:'none' }}/>
+                  )}
+                  {/* legal move onto an empty square — flat dot */}
+                  {isMove && !p && (
+                    <div style={{ width:CELL*0.28, height:CELL*0.28, borderRadius:'50%',
+                      background:'var(--bio)', opacity:0.55, pointerEvents:'none' }}/>
+                  )}
+                  {p && <PieceMini piece={p} cell={CELL}/>}
+                </div>
+              );
+            }))}
+            {/* midline — thin flat rift, no bloom */}
+            <div style={{
+              position:'absolute', left:0, right:0,
+              top: `${(N/2) * CELL}px`, height: 2, marginTop:-1,
+              background:'var(--bio)', opacity:0.5,
+              zIndex: 5, pointerEvents:'none',
+            }}/>
+          </div>
+        </BoardFrame>
       </div>
 
       {result && (
@@ -320,28 +330,39 @@ const Match = ({ run, enemy, node, onWin, onLose, boardSize }) => {
   );
 };
 
-// Brass + barnacle frame with bio-accent inner ring
+// Flat brass frame with file/rank coordinates — no bevel, no bloom, no depth.
 const BoardFrame = ({ N, children }) => {
-  const FRAME = 26;
+  const FRAME = 22;
+  const files = 'ABCDEFGHIJKLMN'.slice(0, N).split('');
+  const coord = {
+    position:'absolute', display:'flex', alignItems:'center', justifyContent:'space-around',
+    fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--brass-dim)',
+    letterSpacing:'0.1em', pointerEvents:'none',
+  };
   return (
     <div style={{ position:'relative', padding: FRAME,
-      background:`
-        repeating-linear-gradient(0deg, transparent 0 26px, rgba(0,0,0,0.2) 26px 27px),
-        linear-gradient(180deg, oklch(0.26 0.04 200), oklch(0.14 0.03 215))
-      `,
-      border: '2px solid oklch(0.04 0.01 225)',
-      boxShadow:`
-        0 40px 100px rgba(0,0,0,0.9),
-        0 0 0 1px rgba(160,200,220,0.08) inset,
-        0 0 60px rgba(30,120,150,0.25)
-      `,
+      background:'oklch(0.11 0.02 218)',
+      border:'1px solid var(--brass-deep)',
     }}>
-      {/* Inner bioluminescent rift */}
-      <div style={{ position:'absolute', inset: FRAME-8, border:'3px solid oklch(0.5 0.1 195)',
-        boxShadow:'0 0 0 1px oklch(0.04 0.01 225), inset 0 0 0 1px oklch(0.04 0.01 225), 0 0 18px rgba(90,200,220,0.5)',
-        pointerEvents:'none', zIndex:2 }}/>
-      <BarnacleRow N={N} thickness={FRAME}/>
-      <div style={{ position:'relative', zIndex:1 }}>{children}</div>
+      {/* file letters — top & bottom */}
+      <div style={{ ...coord, top:2, left:FRAME, right:FRAME, height:FRAME-4 }}>
+        {files.map(f => <span key={f} style={{ width:CELL, textAlign:'center' }}>{f}</span>)}
+      </div>
+      <div style={{ ...coord, bottom:2, left:FRAME, right:FRAME, height:FRAME-4 }}>
+        {files.map(f => <span key={f} style={{ width:CELL, textAlign:'center' }}>{f}</span>)}
+      </div>
+      {/* rank numbers — left & right */}
+      <div style={{ ...coord, flexDirection:'column', left:2, top:FRAME, bottom:FRAME, width:FRAME-4 }}>
+        {Array.from({length:N}).map((_,i) => (
+          <span key={i} style={{ height:CELL, display:'grid', placeItems:'center' }}>{N-i}</span>
+        ))}
+      </div>
+      <div style={{ ...coord, flexDirection:'column', right:2, top:FRAME, bottom:FRAME, width:FRAME-4 }}>
+        {Array.from({length:N}).map((_,i) => (
+          <span key={i} style={{ height:CELL, display:'grid', placeItems:'center' }}>{N-i}</span>
+        ))}
+      </div>
+      <div style={{ position:'relative' }}>{children}</div>
     </div>
   );
 };
@@ -380,55 +401,35 @@ const BarnacleRow = ({ N, thickness }) => (
   </>
 );
 
-// Piece — bone-carved upright chip; white = bleached bone, black = deep obsidian coral
-const PieceMini = ({ piece, n }) => {
-  const glyph = GLYPHS[piece.color][piece.type] || (piece.color==='white'?'♙':'♟');
+// Piece — flat 2D token: one solid glyph, one flat side-colour, one contrast
+// outline so it reads on light AND dark squares. No body, no base, no shadow.
+const PieceMini = ({ piece, cell = CELL }) => {
+  const glyph = SOLID_GLYPH[piece.type] || '♟';
   const isWhite = piece.color === 'white';
-  const fg = isWhite ? 'oklch(0.2 0.03 215)' : 'oklch(0.08 0.01 220)';
-  const bodyFill = isWhite
-    ? 'radial-gradient(ellipse at 40% 30%, oklch(0.92 0.02 85), oklch(0.6 0.04 80) 80%)'  // bone
-    : 'radial-gradient(ellipse at 40% 30%, oklch(0.28 0.06 215), oklch(0.06 0.02 220) 80%)'; // deep coral-obsidian
-  const rim = isWhite ? 'oklch(0.72 0.11 80)' : 'oklch(0.35 0.07 215)';
+  // fill = the side · outline = the opposite value, so contrast never fails
+  const fill    = isWhite ? 'oklch(0.95 0.02 85)'  : 'oklch(0.13 0.025 250)';
+  const outline = isWhite ? 'oklch(0.12 0.02 230)' : 'oklch(0.80 0.03 200)';
+  const side    = isWhite ? 'var(--bio)' : 'var(--coral)';
   const hasAbility = (piece.type==='W'||piece.type==='A'||piece.type==='G'||piece.type==='S');
   const abilityColor = piece.type==='W' ? 'oklch(0.78 0.14 320)' : piece.type==='A' ? 'var(--bio)' : piece.type==='G' ? 'var(--coral)' : 'var(--brass)';
+  const t = Math.max(1, Math.round(cell * 0.022)); // outline thickness
+
   return (
-    <div style={{
-      position:'absolute', inset:0,
-      transform: 'rotateX(-52deg) translateZ(2px)',
-      transformOrigin: '50% 85%',
-      display:'grid', placeItems:'end center',
-      pointerEvents:'none',
-    }}>
-      <div style={{ position:'relative', width:48, height:52, marginBottom:6 }}>
-        {/* shadow */}
-        <div style={{ position:'absolute', bottom:-4, left:'50%', transform:'translateX(-50%) scaleY(0.35)',
-          width: 34, height: 14, borderRadius:'50%',
-          background:'radial-gradient(ellipse, rgba(0,0,0,0.65), transparent 70%)' }}/>
-        {/* base */}
-        <div style={{ position:'absolute', bottom:0, left:'50%', transform:'translateX(-50%)',
-          width: 36, height: 10, borderRadius:'50%',
-          background: bodyFill,
-          boxShadow:`inset 0 -2px 3px rgba(0,0,0,0.5), 0 2px 2px rgba(0,0,0,0.5), 0 0 0 1px ${rim}` }}/>
-        {/* body */}
-        <div style={{ position:'absolute', bottom:6, left:'50%', transform:'translateX(-50%)',
-          width: 30, height: 42, borderRadius:'14px 14px 6px 6px',
-          background: bodyFill,
-          boxShadow:`inset -3px -6px 8px rgba(0,0,0,0.45), inset 3px 3px 6px rgba(200,220,230,0.2), 0 2px 4px rgba(0,0,0,0.6), 0 0 0 1px ${rim}`,
-          display:'grid', placeItems:'center',
-        }}>
-          <span style={{
-            fontFamily:'Cinzel, serif',
-            fontSize: 24, fontWeight: 600,
-            color: fg,
-            textShadow: isWhite ? '0 1px 0 rgba(255,255,255,0.4)' : '0 1px 0 rgba(160,200,220,0.15)',
-            lineHeight: 1,
-          }}>{glyph}</span>
-        </div>
-        {hasAbility && (
-          <div style={{ position:'absolute', top:4, right:6, width:6, height:6, borderRadius:'50%',
-            background: abilityColor, boxShadow:`0 0 8px ${abilityColor}` }}/>
-        )}
-      </div>
+    <div style={{ position:'absolute', inset:0, display:'grid', placeItems:'center',
+      pointerEvents:'none' }}>
+      <span style={{
+        fontFamily:'Cinzel, serif', fontSize: cell * 0.72, lineHeight:1,
+        color: fill,
+        // crisp 4-way outline — flat, no blur
+        textShadow: `${t}px 0 0 ${outline}, -${t}px 0 0 ${outline}, 0 ${t}px 0 ${outline}, 0 -${t}px 0 ${outline}`,
+      }}>{glyph}</span>
+      {/* side bar — which army this belongs to, at a glance */}
+      <div style={{ position:'absolute', bottom:3, left:'22%', right:'22%', height:2,
+        background: side }}/>
+      {hasAbility && (
+        <div style={{ position:'absolute', top:3, right:4, width:6, height:6,
+          background: abilityColor }}/>
+      )}
     </div>
   );
 };

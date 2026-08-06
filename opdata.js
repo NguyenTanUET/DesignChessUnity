@@ -325,17 +325,29 @@ const TRADER_STOCK = {
 // ------------------ CLASSIFICATION (species) ------------------
 // Pre-assigned to a follower before purchase (a property of the species). Its
 // stat rises one level with every evolution: value(tier) = base + growth*tier.
+// Each species carries an EFFECT whose magnitude is its classification stat at
+// the piece's current evolution.
 const CLASSIFICATIONS = [
-  { id:'cnidaria',      name:'Cnidaria',       glyph:'❀', color:'oklch(0.70 0.13 330)', stat:'Sting',     base:2, growth:2 },
-  { id:'cephalopoda',   name:'Cephalopoda',    glyph:'⊛', color:'oklch(0.62 0.14 290)', stat:'Guile',     base:3, growth:2 },
-  { id:'crustacea',     name:'Crustacea',      glyph:'⊐', color:'oklch(0.64 0.12 40)',  stat:'Carapace',  base:4, growth:2 },
-  { id:'echinodermata', name:'Echinodermata',  glyph:'✸', color:'oklch(0.70 0.12 75)',  stat:'Regrowth',  base:2, growth:3 },
-  { id:'chondrichthyes',name:'Chondrichthyes', glyph:'⋀', color:'oklch(0.68 0.10 195)', stat:'Predation', base:3, growth:3 },
-  { id:'teleostei',     name:'Teleostei',      glyph:'≈', color:'oklch(0.72 0.12 200)', stat:'Agility',   base:3, growth:2 },
-  { id:'polychaeta',    name:'Polychaeta',     glyph:'∿', color:'oklch(0.66 0.12 150)', stat:'Severance', base:2, growth:2 },
-  { id:'marine-mammal', name:'Marine Mammal',  glyph:'◗', color:'oklch(0.70 0.06 230)', stat:'Resolve',   base:4, growth:3 },
-  { id:'marine-reptile',name:'Marine Reptile', glyph:'⊙', color:'oklch(0.66 0.10 140)', stat:'Tenacity',  base:4, growth:2 },
-  { id:'plankton',      name:'Plankton',       glyph:'·', color:'oklch(0.74 0.10 90)',  stat:'Swarm',     base:1, growth:2 },
+  { id:'cnidaria',      name:'Cnidaria',       glyph:'❀', color:'oklch(0.70 0.13 330)', stat:'Sting',     base:2, growth:2,
+    effect:(v)=>`Adjacent foes suffer ${v} venom at the end of each turn.` },
+  { id:'cephalopoda',   name:'Cephalopoda',    glyph:'⊛', color:'oklch(0.62 0.14 290)', stat:'Guile',     base:3, growth:2,
+    effect:(v)=>`Allies within 1 square gain ${v}% evasion.` },
+  { id:'crustacea',     name:'Crustacea',      glyph:'⊐', color:'oklch(0.64 0.12 40)',  stat:'Carapace',  base:4, growth:2,
+    effect:(v)=>`Grants an adjacent ally ${v} Shield at battle start.` },
+  { id:'echinodermata', name:'Echinodermata',  glyph:'✸', color:'oklch(0.70 0.12 75)',  stat:'Regrowth',  base:2, growth:3,
+    effect:(v)=>`Heals ${v} Vigor to itself or an adjacent ally every other turn.` },
+  { id:'chondrichthyes',name:'Chondrichthyes', glyph:'⋀', color:'oklch(0.68 0.10 195)', stat:'Predation', base:3, growth:3,
+    effect:(v)=>`Allies striking a wounded foe deal +${v} damage.` },
+  { id:'teleostei',     name:'Teleostei',      glyph:'≈', color:'oklch(0.72 0.12 200)', stat:'Agility',   base:3, growth:2,
+    effect:(v)=>`Adjacent allies gain +${v} movement points.` },
+  { id:'polychaeta',    name:'Polychaeta',     glyph:'∿', color:'oklch(0.66 0.12 150)', stat:'Severance', base:2, growth:2,
+    effect:(v)=>`Its captures strip ${v} Shield from the target's neighbours.` },
+  { id:'marine-mammal', name:'Marine Mammal',  glyph:'◗', color:'oklch(0.70 0.06 230)', stat:'Resolve',   base:4, growth:3,
+    effect:(v)=>`Allies within 2 squares shrug off ${v} turns of Control.` },
+  { id:'marine-reptile',name:'Marine Reptile', glyph:'⊙', color:'oklch(0.66 0.10 140)', stat:'Tenacity',  base:4, growth:2,
+    effect:(v)=>`Absorbs ${v} damage aimed at an adjacent ally.` },
+  { id:'plankton',      name:'Plankton',       glyph:'·', color:'oklch(0.74 0.10 90)',  stat:'Swarm',     base:1, growth:2,
+    effect:(v)=>`Breaks line of sight — adjacent allies gain ${v} concealment.` },
 ];
 const classificationById = (id) => CLASSIFICATIONS.find(c => c.id === id) || CLASSIFICATIONS[0];
 const classValueAt = (cls, tier) => cls.base + cls.growth * tier;
@@ -348,24 +360,68 @@ const ARCHETYPE_CLASS = {
 const classificationFor = (archetype) => ARCHETYPE_CLASS[archetype] || 'plankton';
 
 // ------------------ FACET (temperament) ------------------
-// Rolled at purchase (unknown until bought; buying again rolls a different one).
-// Each evolution strengthens the beneficial part and weakens the detrimental.
+// Facets come in OPPOSED PAIRS. A specimen is born under one pair (rolled at
+// purchase — unknown until bought), and the player commits it to ONE of the
+// pair's two sides. Each evolution strengthens the boon and softens the bane.
 const FACETS = [
-  { id:'contempt',    name:'Contempt',    glyph:'⊽', color:'oklch(0.68 0.13 40)',  kind:'good',
+  // ── Regard · how it measures the ones across the board ──
+  { id:'contempt',    pair:'regard',   name:'Contempt',    glyph:'⊽', color:'oklch(0.68 0.13 40)',  kind:'good',
     blurb:'Looks down on lesser prey.',
     desc:(t)=>`+${10 + t*5}% accuracy when capturing a LOWER-Rank piece.` },
-  { id:'manipulator', name:'Manipulator', glyph:'⟁', color:'oklch(0.66 0.13 300)', kind:'mixed',
-    blurb:'Bends others to its will, and resents being bent.',
-    desc:(t)=>`+${1 + t} turn when it inflicts Controlled · −${Math.max(0, 1 - t)} turn when Controlled by a foe.` },
-  { id:'resentment',  name:'Resentment',  glyph:'⊼', color:'oklch(0.66 0.15 25)',  kind:'good',
+  { id:'resentment',  pair:'regard',   name:'Resentment',  glyph:'⊼', color:'oklch(0.66 0.15 25)',  kind:'good',
     blurb:'Burns to drag down its betters.',
     desc:(t)=>`+${10 + t*5}% accuracy when capturing a HIGHER-Rank piece.` },
-  { id:'hoarder',     name:'Hoarder',     glyph:'◈', color:'oklch(0.72 0.12 80)',  kind:'good',
+
+  // ── Dominion · whether it bends others, or is bent ──
+  { id:'manipulator', pair:'dominion', name:'Manipulator', glyph:'⟁', color:'oklch(0.66 0.13 300)', kind:'mixed',
+    blurb:'Bends others to its will, and resents being bent.',
+    desc:(t)=>`+${1 + t} turn when it inflicts Controlled · −${Math.max(0, 1 - t)} turn when Controlled by a foe.` },
+  { id:'fool',        pair:'dominion', name:'Fool',        glyph:'⊙', color:'oklch(0.70 0.11 95)',  kind:'mixed',
+    blurb:'Too witless to command — too witless to hold.',
+    desc:(t)=>`Controlled on this piece ends ${1 + t} turn early · it can never inflict Controlled.` },
+
+  // ── Appetite · what it does with what it carries ──
+  { id:'hoarder',     pair:'appetite', name:'Hoarder',     glyph:'◈', color:'oklch(0.72 0.12 80)',  kind:'good',
     blurb:'Covets what it carries.',
     desc:(t)=>`On State None→Carrying Resource: gain ${1 + t} Shield and ${1 + t} move range.` },
+  { id:'spender',     pair:'appetite', name:'Spender',     glyph:'◇', color:'oklch(0.70 0.12 150)', kind:'good',
+    blurb:'Gives it all away, and is loved for it.',
+    desc:(t)=>`On State Carrying Resource→None: allies within 1 square gain ${1 + t} Shield.` },
+
+  // ── Vigil · rooted, or restless ──
+  { id:'sentinel',    pair:'vigil',    name:'Sentinel',    glyph:'⊓', color:'oklch(0.66 0.09 210)', kind:'good',
+    blurb:'Roots itself and dares the tide.',
+    desc:(t)=>`If it did not move last turn, gain ${1 + t} Shield.` },
+  { id:'rover',       pair:'vigil',    name:'Rover',       glyph:'⇝', color:'oklch(0.72 0.12 195)', kind:'good',
+    blurb:'Never still long enough to be caught.',
+    desc:(t)=>`Moving 2+ squares grants +${10 + t*5}% accuracy on its next capture.` },
 ];
-const facetById = (id) => FACETS.find(f => f.id === id) || null;
-const rollFacet = () => FACETS[Math.floor(Math.random() * FACETS.length)].id;
+
+const FACET_PAIRS = [
+  { id:'regard',   name:'Regard',   axis:'Scorn the lesser, or the greater',  a:'contempt',    b:'resentment' },
+  { id:'dominion', name:'Dominion', axis:'Bend others, or shrug off the bend', a:'manipulator', b:'fool' },
+  { id:'appetite', name:'Appetite', axis:'Keep the spoil, or give it away',   a:'hoarder',     b:'spender' },
+  { id:'vigil',    name:'Vigil',    axis:'Hold the square, or never rest',    a:'sentinel',    b:'rover' },
+];
+
+const facetById     = (id) => FACETS.find(f => f.id === id) || null;
+const facetPairById = (id) => FACET_PAIRS.find(p => p.id === id) || null;
+const facetsOfPair  = (pair) => pair ? [facetById(pair.a), facetById(pair.b)].filter(Boolean) : [];
+const rollFacetPair = () => FACET_PAIRS[Math.floor(Math.random() * FACET_PAIRS.length)].id;
+
+// Which pair a specimen was born under. Falls back to the pair of an already
+// chosen facet, then to a stable hash of the instanceId, so followers saved
+// before pairs existed still resolve to the same pair every time.
+const resolveFacetPair = (follower) => {
+  if (!follower) return null;
+  if (follower.facetPair) return facetPairById(follower.facetPair);
+  const chosen = follower.facet ? facetById(follower.facet) : null;
+  if (chosen) return facetPairById(chosen.pair);
+  const seed = String(follower.instanceId || '');
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return FACET_PAIRS[h % FACET_PAIRS.length];
+};
 
 // ------------------ STARTING FOLLOWERS (per class roster) ------------------
 function buildStartingRoster(cls) {
@@ -388,7 +444,8 @@ function buildStartingRoster(cls) {
       augSlotCount: slotCount,
       augments: { optic:null, neural:null, blood:null, fin:null, chassis:null },
       classification: classificationFor(archetype), // species — fixed before purchase
-      facet: rollFacet(),                            // temperament — rolled per instance
+      facetPair: rollFacetPair(),                   // opposed pair rolled per instance
+      facet: null,                                  // the side the player commits to
       inPool: false, // deployment pool
     });
   }
@@ -408,7 +465,8 @@ Object.assign(window, {
   AUG_SLOTS, AUGMENTATIONS, FOLLOWER_ARCHETYPES, EVOLUTION,
   OP_RELICS, OVERSEERS, OP_ASSIGNMENTS, TRADER_STOCK,
   buildStartingRoster, generateFollowerName,
-  CLASSIFICATIONS, FACETS, classificationById, classValueAt,
-  classificationFor, facetById, rollFacet,
+  CLASSIFICATIONS, FACETS, FACET_PAIRS, classificationById, classValueAt,
+  classificationFor, facetById, facetPairById, facetsOfPair,
+  rollFacetPair, resolveFacetPair,
 });
 })();

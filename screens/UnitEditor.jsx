@@ -9,12 +9,16 @@
 
 const unitEditorDefault = () => {
   const archetype = 'larva';
+  // Born under one opposed pair, committed to a random side of it.
+  const pair = facetPairById(rollFacetPair());
+  const sides = facetsOfPair(pair);
   return {
     id: `u-${Math.random().toString(36).slice(2,8)}`,
     name: generateFollowerName(archetype, Math.floor(Math.random() * 1000)),
     archetype,
     evoTier: 0,
-    facet: rollFacet(),
+    facetPair: pair.id,
+    facet: sides[Math.floor(Math.random() * sides.length)].id,
     augments: { optic:null, neural:null, blood:null, fin:null, chassis:null },
   };
 };
@@ -329,7 +333,8 @@ const UnitEditor = ({ go }) => {
                   {FACETS.map(f => {
                     const on = sel.facet === f.id;
                     return (
-                      <button key={f.id} onClick={()=>{ patch({ facet: f.id }); setFacetOpen(false); }}
+                      <button key={f.id}
+                        onClick={()=>{ patch({ facet: f.id, facetPair: f.pair }); setFacetOpen(false); }}
                         style={{
                           padding:'6px 9px', textAlign:'left',
                           background: on ? 'var(--abyss-3)' : 'transparent',
@@ -339,6 +344,10 @@ const UnitEditor = ({ go }) => {
                         <span style={{ fontFamily:'Cinzel, serif', fontSize:13, color:f.color, width:18 }}>{f.glyph}</span>
                         <span style={{ flex:1 }}>
                           <span style={{ fontFamily:'Cinzel, serif', fontSize:11.5, letterSpacing:'0.04em' }}>{f.name}</span>
+                          <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8,
+                            color:'var(--bone-dim)', letterSpacing:'0.15em', marginLeft:6, textTransform:'uppercase' }}>
+                            {facetPairById(f.pair)?.name}
+                          </span>
                           <span style={{ display:'block', fontFamily:'Cormorant Garamond, serif', fontSize:10.5,
                             fontStyle:'italic', color:'var(--bone-dim)', marginTop:1 }}>{f.blurb}</span>
                         </span>

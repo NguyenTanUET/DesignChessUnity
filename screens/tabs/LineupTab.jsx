@@ -47,12 +47,16 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
   const setSquare = (sqId, instanceId) => {
     updateCurrent(cur => {
       const b = { ...cur.board };
-      // Remove this instance from any other square in this lineup
-      for (const k of Object.keys(b)) {
-        if (b[k] === instanceId) delete b[k];
-      }
-      if (instanceId) b[sqId] = instanceId;
-      else delete b[sqId];
+      if (!instanceId) { delete b[sqId]; return { board: b }; }
+      // Origin square of the moved piece (if it was already on the board)
+      let fromKey = null;
+      for (const k of Object.keys(b)) if (b[k] === instanceId) fromKey = k;
+      if (fromKey === sqId) return {};
+      const displaced = b[sqId];   // occupant of the target square
+      if (fromKey) delete b[fromKey];
+      // SWAP: the displaced piece takes the mover's origin square
+      if (displaced && displaced !== instanceId && fromKey) b[fromKey] = displaced;
+      b[sqId] = instanceId;
       return { board: b };
     });
   };
@@ -111,71 +115,44 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
     setRenamingId(null);
   };
 
-  // === BENCH / DRAG ===
-  // Bench is now CURATED per-lineup — player explicitly selects which followers,
-  // augmentations, and relics ride along with this plan.
-  const benchFollowerIds = current?.benchFollowers || [];
-  const benchAugIds      = current?.benchAugments  || [];
-  const benchRelicIds    = current?.benchRelics    || [];
-  // Carry Relic — separate single-relic slot taken into the match (independent of loadout).
-  const carryRelicId     = current?.carryRelicId   || null;
-
-  // Available pools (everything the player owns — what the picker draws from)
-  const augInventory  = run.augInventory  || [];
-  const relicsOwned   = run.relicsOwned   || [];
-  // All augs the player has access to (unequipped + equipped, like ItemTab does)
-  const allOwnedAugIds = React.useMemo(() => {
-    const ids = new Set([
-      ...augInventory,
-      ...roster.flatMap(f => Object.values(f.augments || {}).filter(Boolean)),
-    ]);
-    return [...ids];
-  }, [augInventory, roster]);
-
-  // Followers actually on the bench (explicit selection, minus those deployed on board)
-  const placedIds = new Set(Object.values(board));
-  const benchFollowers = roster.filter(f =>
-    benchFollowerIds.includes(f.instanceId) && !placedIds.has(f.instanceId)
-  );
-  const benchAugs   = benchAugIds.map(id => AUGMENTATIONS.find(a => a.id === id)).filter(Boolean);
-  const benchRelics = benchRelicIds.map(id => OP_RELICS.find(r => r.id === id)).filter(Boolean);
-  const carryRelic  = carryRelicId ? OP_RELICS.find(r => r.id === carryRelicId) : null;
+  // === PLACEMENT / DRAG ===
+  // The lineup is authored directly on the board: every EMPTY square carries a
+  // small + button that opens the owned-followers list; picking one seats it
+  // there. Drag & drop still moves pieces between squares.
+  // Carry Relic — single relic slot taken into the match.
+  const carryRelicId  = current?.carryRelicId || null;
+  const relicsOwned   = run.relicsOwned || [];
+  const carryRelic    = carryRelicId ? OP_RELICS.find(r => r.id === carryRelicId) : null;
   const setCarryRelic = (id) => updateCurrent(() => ({ carryRelicId: id || null }));
 
+  const placedIds = new Set(Object.values(board));
+
   const [dragId, setDragId] = React.useState(null);
-  // Picker modal state — which kind ('follower'|'augment'|'relic'|null)
+  // Carry-relic picker modal ('carry-relic' | null)
   const [pickerKind, setPickerKind] = React.useState(null);
+  // Which empty square's follower picker is open ("rNcM" | null)
+  const [pickSquare, setPickSquare] = React.useState(null);
   // Delete confirmation for the current lineup
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  // Follower dossier popup (left-click a placed piece)
+  const [infoId, setInfoId] = React.useState(null);
+  window.useEscClose(() => setInfoId(null));
 
-  const setBenchKey = (key, ids) => updateCurrent(() => ({ [key]: ids }));
-
-  const removeFromBench = (kind, id) => {
-    if (kind === 'follower') {
-      // Also yank off the board if deployed
-      updateCurrent(cur => {
-        const b = { ...cur.board };
-        for (const k of Object.keys(b)) if (b[k] === id) delete b[k];
-        return {
-          board: b,
-          benchFollowers: (cur.benchFollowers || []).filter(x => x !== id),
-        };
-      });
-    } else if (kind === 'augment') {
-      setBenchKey('benchAugments', benchAugIds.filter(x => x !== id));
-    } else if (kind === 'relic') {
-      setBenchKey('benchRelics', benchRelicIds.filter(x => x !== id));
-    }
+  const removePlaced = (instanceId) => {
+    updateCurrent(cur => {
+      const b = { ...cur.board };
+      for (const k of Object.keys(b)) if (b[k] === instanceId) delete b[k];
+      return { board: b };
+    });
   };
 
   const autoFill = () => {
     if (!current) return;
-    // Auto-fill respects the bench: only deploys from curated bench followers.
+    // Auto-fill draws from the whole roster.
     const backRow  = 0;
     const frontRow = 1;
-    const pool = roster.filter(f => benchFollowerIds.includes(f.instanceId));
-    const majors = pool.filter(f => f.archetype !== 'larva').slice(0, width);
-    const larvae = pool.filter(f => f.archetype === 'larva').slice(0, width);
+    const majors = roster.filter(f => f.archetype !== 'larva').slice(0, width);
+    const larvae = roster.filter(f => f.archetype === 'larva').slice(0, width);
     const b = {};
     majors.forEach((f, i) => { b[`r${backRow}c${i}`] = f.instanceId; });
     larvae.forEach((f, i) => { b[`r${frontRow}c${i}`] = f.instanceId; });
@@ -336,7 +313,7 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
         </div>
       ) : (
         <div key={`${width}-${selIdx}`} className="tab-in" style={{ flex:1, minHeight:0, display:'grid',
-          gridTemplateColumns:'260px 1fr 540px', gap:14, padding:'24px 28px',
+          gridTemplateColumns:'300px 1fr', gap:14, padding:'24px 28px',
           overflow:'hidden' }}>
           {/* === DEPLOYED ROSTER (left of board) === */}
           <div style={{
@@ -385,7 +362,7 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
                         {rank} · {col}
                       </div>
                     </div>
-                    <button onClick={()=>removeFromBench('follower', instId)}
+                    <button onClick={()=>removePlaced(instId)}
                       title="Remove from this lineup"
                       style={{ background:'transparent', border:'none', cursor:'pointer',
                         color:'var(--bone-dim)', fontFamily:'JetBrains Mono, monospace', fontSize:13,
@@ -423,74 +400,20 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
               width={width} fullH={active.fullH} lineup={board}
               roster={roster} onSetSquare={setSquare}
               dragId={dragId} setDragId={setDragId}
+              onPickSquare={setPickSquare}
+              onInfoPiece={setInfoId}
+              onRemoveDrop={removePlaced}
               color={active.color}
             />
 
             <div style={{ marginTop:14, fontFamily:'JetBrains Mono, monospace', fontSize:10,
               color:'var(--bio-dim)', letterSpacing:'0.2em' }}>
-              {placedCount}/{active.cap} DEPLOYED · {benchFollowers.length} ON BENCH · {benchAugs.length} AUG · {benchRelics.length} RELIC
+              {placedCount}/{active.cap} DEPLOYED · {Math.max(0, roster.length - placedCount)} IN RESERVE
             </div>
             <div style={{ marginTop:8, fontFamily:'Cormorant Garamond, serif', fontSize:13,
               color:'var(--bone-dim)', fontStyle:'italic', textAlign:'center', maxWidth:480, lineHeight:1.5 }}>
-              Drag a follower from the bench onto a square. Empty squares are drawn from reserves when the tide begins.
-            </div>
-          </div>
-
-          {/* === SUPPORT SQUAD (right) — followers + augments + relics, one group
-              riding along with this plan === */}
-          <div style={{
-            display:'flex', flexDirection:'column', gap:10,
-            background:'linear-gradient(180deg, var(--abyss-1), var(--abyss-0))',
-            border:'1px solid var(--abyss-3)', padding:'12px',
-            overflow:'hidden', minHeight:0,
-          }}>
-            <div>
-              <div className="caps" style={{ marginBottom:4 }}>Support Squad</div>
-              <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
-                letterSpacing:'0.2em' }}>
-                FOLLOWERS · AUG · RELIC — RIDES WITH THIS PLAN
-              </div>
-            </div>
-
-            <div style={{ flex:1, minHeight:0, display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-              {/* Augments + Relics */}
-              <div style={{ display:'flex', flexDirection:'column', gap:12, overflowY:'auto', minHeight:0 }}>
-                <BenchPanelSide
-                  inline
-                  sections={[
-                    { kind:'augment', title:'Augmentations', glyph:'⊕',
-                      accent:'oklch(0.7 0.13 195)', items:benchAugs,
-                      onAdd:()=>setPickerKind('augment'),
-                      emptyHint:'No augmentations in the squad.' },
-                    { kind:'relic', title:'Relics', glyph:'✠',
-                      accent:'var(--brass)', items:benchRelics,
-                      onAdd:()=>setPickerKind('relic'),
-                      emptyHint:'No relics in the squad.' },
-                  ]}
-                  onRemove={removeFromBench}
-                />
-              </div>
-
-              {/* Followers (drag to deploy) */}
-              <div style={{ display:'flex', flexDirection:'column', gap:10,
-                borderLeft:'1px solid var(--abyss-3)', paddingLeft:10, minHeight:0 }}>
-                <BenchPanelFollowers
-                inline
-                color={active.color}
-                benchFollowers={benchFollowers}
-                dragId={dragId} setDragId={setDragId}
-                onAdd={()=>setPickerKind('follower')}
-                onRemove={(id)=>removeFromBench('follower', id)}
-                onUnplaceDrop={(id) => {
-                  updateCurrent(cur => {
-                    const b = { ...cur.board };
-                    for (const k of Object.keys(b)) if (b[k] === id) delete b[k];
-                    return { board: b };
-                  });
-                  setDragId(null);
-                }}
-              />
-              </div>
+              Tap the + on an empty square to seat a follower there. Click a piece for its dossier;
+              drag between squares to rearrange, or drop it on the zone below to remove.
             </div>
           </div>
         </div>
@@ -512,52 +435,120 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
         );
       })()}
 
-      {/* === BENCH PICKER MODAL === */}
-      {pickerKind && current && (
+      {/* === CARRY-RELIC PICKER MODAL === */}
+      {pickerKind === 'carry-relic' && current && (
         <BenchPicker
-          kind={pickerKind}
+          kind="carry-relic"
           color={active.color}
           roster={roster}
-          allOwnedAugIds={allOwnedAugIds}
+          allOwnedAugIds={[]}
           relicsOwned={relicsOwned}
-          augStatus={(augId) => {
-            for (const f of roster) {
-              for (const [slot, id] of Object.entries(f.augments || {})) {
-                if (id === augId) return { state:'grafted', follower:f, slot };
-              }
-            }
-            return { state:'inventory' };
-          }}
-          initialSelected={
-            pickerKind === 'follower'    ? benchFollowerIds :
-            pickerKind === 'augment'     ? benchAugIds      :
-            pickerKind === 'relic'       ? benchRelicIds    :
-            pickerKind === 'carry-relic' ? (carryRelicId ? [carryRelicId] : []) :
-                                           []
-          }
-          single={pickerKind === 'carry-relic'}
+          augStatus={() => ({ state:'inventory' })}
+          initialSelected={carryRelicId ? [carryRelicId] : []}
+          single
           onCancel={()=>setPickerKind(null)}
-          onAccept={(ids) => {
-            if (pickerKind === 'follower') {
-              // Drop board placements for any followers no longer on bench
-              updateCurrent(cur => {
-                const b = { ...cur.board };
-                for (const k of Object.keys(b)) {
-                  if (!ids.includes(b[k])) delete b[k];
-                }
-                return { board: b, benchFollowers: ids };
-              });
-            } else if (pickerKind === 'augment') {
-              setBenchKey('benchAugments', ids);
-            } else if (pickerKind === 'relic') {
-              setBenchKey('benchRelics', ids);
-            } else if (pickerKind === 'carry-relic') {
-              setCarryRelic(ids[0] || null);
-            }
-            setPickerKind(null);
-          }}
+          onAccept={(ids) => { setCarryRelic(ids[0] || null); setPickerKind(null); }}
         />
       )}
+
+      {/* === FOLLOWER DOSSIER POPUP — left-click a placed piece === */}
+      {infoId && (() => {
+        const f = roster.find(x => x.instanceId === infoId);
+        if (!f) return null;
+        return (
+          <div className="modal-backdrop" onClick={()=>setInfoId(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{
+              background:'var(--abyss-1)', border:'1px solid var(--brass-deep)',
+              width:'min(980px, 94%)', maxHeight:'88%', overflowY:'auto', position:'relative',
+              boxShadow:'0 24px 80px rgba(0,0,0,0.7)' }}>
+              <button onClick={()=>setInfoId(null)} title="Close"
+                style={{ position:'absolute', top:10, right:12, zIndex:2, background:'transparent',
+                  border:'1px solid var(--abyss-4)', color:'var(--bone-dim)', cursor:'pointer',
+                  fontFamily:'JetBrains Mono, monospace', fontSize:14, padding:'2px 9px' }}>✕</button>
+              <UnitInfoTab run={run} setRun={setRun} sel={f}
+                arch={FOLLOWER_ARCHETYPES[f.archetype]} go={()=>{}}
+                togglePool={togglePool || (()=>{})} setSubTab={()=>{}}/>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* === SQUARE FOLLOWER PICKER — tap + on an empty square, pick who sits there === */}
+      {pickSquare && current && (
+        <SquarePickModal
+          square={pickSquare}
+          roster={roster}
+          placedIds={placedIds}
+          color={active.color}
+          onCancel={()=>setPickSquare(null)}
+          onPick={(instanceId) => { setSquare(pickSquare, instanceId); setPickSquare(null); }}
+        />
+      )}
+    </div>
+  );
+};
+
+// --- Square picker: the owned-followers list for one empty square. Click a row
+// to seat that follower there (already-placed followers move from their square).
+const SquarePickModal = ({ square, roster, placedIds, color, onCancel, onPick }) => {
+  if (window.useEscClose) window.useEscClose(onCancel);
+  const m = square.match(/r(\d+)c(\d+)/);
+  const label = m ? `${m[1] === '0' ? 'BACK' : 'FRONT'} · C${parseInt(m[2],10)+1}` : square;
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="modal" onClick={e=>e.stopPropagation()} style={{ maxWidth:520 }}>
+        <div className="eyebrow" style={{ color }}>♟ · Seat a Follower</div>
+        <h2 style={{ margin:'6px 0 4px', fontSize:24, fontFamily:'Cinzel, serif', color:'var(--bone)' }}>
+          {label}
+        </h2>
+        <div style={{ fontStyle:'italic', color:'var(--bone-dim)', fontSize:13, marginBottom:14,
+          fontFamily:'Cormorant Garamond, serif' }}>
+          Every follower you own. Pick one and it takes this square.
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:420, overflowY:'auto', padding:2 }}>
+          {roster.length === 0 && (
+            <div style={{ padding:'30px 16px', textAlign:'center', border:'1px dashed var(--abyss-4)',
+              fontFamily:'Cormorant Garamond, serif', fontStyle:'italic',
+              color:'var(--bone-dim)', fontSize:13 }}>
+              No followers in the roster yet.
+            </div>
+          )}
+          {roster.map(f => {
+            const a = FOLLOWER_ARCHETYPES[f.archetype];
+            const onBoard = placedIds.has(f.instanceId);
+            return (
+              <div key={f.instanceId} className="hoverable" onClick={()=>onPick(f.instanceId)}
+                style={{
+                  display:'flex', alignItems:'center', gap:10, padding:'9px 12px', cursor:'pointer',
+                  background:'var(--abyss-1)', border:'1px solid var(--abyss-3)',
+                  borderLeft:`3px solid ${a.color}`,
+                }}>
+                <div style={{ fontSize:20, fontFamily:'Cinzel, serif', color:a.color,
+                  width:24, textAlign:'center' }}>{a.glyph}</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone)',
+                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{f.name}</div>
+                  <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5,
+                    color:'var(--bone-dim)', letterSpacing:'0.15em', marginTop:2 }}>
+                    {a.role} · E{f.evoTier}
+                  </div>
+                </div>
+                {onBoard && (
+                  <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5,
+                    color:'var(--brass-dim)', letterSpacing:'0.15em' }}>◆ ON BOARD · MOVES</span>
+                )}
+                <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10,
+                  color:'var(--bio)', letterSpacing:'0.2em' }}>SEAT ▸</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16 }}>
+          <button className="btn ghost sm" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
     </div>
   );
 };
@@ -634,7 +625,7 @@ const CarryRelicSlot = ({ relic, onChoose, onClear }) => {
 // --- Board Grid: renders just the two placement ranks (back + front) for the
 // active formation — width × 2 cells. There are no hatched / out-of-bounds rows,
 // since the player can only deploy onto these two ranks anyway.
-const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragId, color }) => {
+const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragId, onPickSquare, onInfoPiece, onRemoveDrop, color }) => {
   const rows = 2;                                      // back rank + front rank only
   const backRow  = 0;
   const frontRow = 1;
@@ -703,10 +694,10 @@ const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragI
                 borderBottom: sq.r===rows-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
                 opacity: isOutOfBounds ? 0.4 : 1,
                 transition:'background 0.15s',
-                cursor: isPlaceable && !occ ? 'default' : (occ ? 'pointer' : 'not-allowed'),
+                cursor: occ ? 'pointer' : (isPlaceable ? 'pointer' : 'not-allowed'),
               }}
-              onClick={()=> occ && onSetSquare(sq.id, null)}
-              title={occ ? `${occ.name} — click to clear` : (isPlaceable ? `${rowLabel} rank · column ${sq.c+1}` : 'Out of bounds — not deployable')}
+              onClick={()=> occ ? (onInfoPiece && onInfoPiece(occ.instanceId)) : (isPlaceable && onPickSquare && onPickSquare(sq.id))}
+              title={occ ? `${occ.name} — click for info · drag to move` : (isPlaceable ? `${rowLabel} rank · column ${sq.c+1} — pick a follower` : 'Out of bounds — not deployable')}
             >
               {/* Rank label at the leftmost column of placement rows */}
               {isFirstCol && isPlaceable && rowLabel && (
@@ -730,10 +721,19 @@ const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragI
                   color:'oklch(0.4 0.05 220)', opacity:0.5 }}>·</div>
               )}
 
-              {/* Placeable empty cell */}
+              {/* Placeable empty cell — small + button opens the follower picker */}
               {isPlaceable && !occ && (
-                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9,
-                  color:'var(--abyss-4)', opacity:0.6, letterSpacing:'0.2em' }}>+</div>
+                <button
+                  onClick={(e)=>{ e.stopPropagation(); onPickSquare && onPickSquare(sq.id); }}
+                  title="Pick a follower for this square"
+                  style={{
+                    width:'46%', height:'46%', minWidth:16, minHeight:16,
+                    display:'grid', placeItems:'center', padding:0,
+                    background:'rgba(0,8,12,0.35)',
+                    border:`1px dashed ${color}`, borderRadius:'50%',
+                    color, opacity:0.55, cursor:'pointer',
+                    fontFamily:'JetBrains Mono, monospace', fontSize:13, lineHeight:1,
+                  }}>+</button>
               )}
 
               {/* Occupied */}
@@ -772,6 +772,24 @@ const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragI
         letterSpacing:'0.25em' }}>
         ◈ {width}×{fullH} formation · Deploy 2 ranks of {width} ◈
       </div>
+
+      {/* Remove zone — surfaces only while a piece is being dragged */}
+      {dragId && (
+        <div
+          onDragOver={(e)=>e.preventDefault()}
+          onDrop={(e)=>{
+            e.preventDefault();
+            const id = e.dataTransfer.getData('text/plain') || dragId;
+            if (id && onRemoveDrop) onRemoveDrop(id);
+            setDragId(null);
+          }}
+          style={{ marginTop:12, padding:'11px 14px', textAlign:'center',
+            border:'1px dashed oklch(0.7 0.15 25)', background:'oklch(0.18 0.05 30 / 0.4)',
+            color:'oklch(0.75 0.13 25)', fontFamily:'JetBrains Mono, monospace', fontSize:10,
+            letterSpacing:'0.25em', textTransform:'uppercase' }}>
+          ⌫ Remove from lineup — drop here
+        </div>
+      )}
     </div>
   );
 };

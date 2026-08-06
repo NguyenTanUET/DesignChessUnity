@@ -106,7 +106,7 @@ const EvolutionTab = ({ run, setRun, selId }) => {
                 <div>
                   <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.25em',
                     color:'var(--bone-dim)', textTransform:'uppercase' }}>
-                    Facet · rolled at purchase{facet.kind === 'mixed' ? ' · mixed' : ''}
+                    Facet · {facetPairById(facet.pair)?.name || 'committed'}{facet.kind === 'mixed' ? ' · mixed' : ''}
                   </div>
                   <div style={{ fontFamily:'Cinzel, serif', fontSize:16, color:'var(--bone)', letterSpacing:'0.04em' }}>
                     {facet.name}
@@ -132,12 +132,25 @@ const EvolutionTab = ({ run, setRun, selId }) => {
                 </div>
               )}
             </>
-          ) : (
-            <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, color:'var(--bone-dim)',
-              fontStyle:'italic', textAlign:'center', padding:'18px 8px' }}>
-              No facet imprinted on this specimen.
-            </div>
-          )}
+          ) : (() => {
+            const pair = resolveFacetPair(sel);
+            return (
+              <div style={{ textAlign:'center', padding:'14px 8px' }}>
+                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.25em',
+                  color:'var(--bone-dim)', textTransform:'uppercase' }}>
+                  Facet · {pair ? pair.name : 'Temperament'} · uncommitted
+                </div>
+                <div style={{ fontFamily:'Cinzel, serif', fontSize:15, color:'var(--bone)',
+                  letterSpacing:'0.04em', marginTop:6 }}>
+                  {facetsOfPair(pair).map(f => f.name).join('  ×  ') || '—'}
+                </div>
+                <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12.5, color:'var(--bone-dim)',
+                  fontStyle:'italic', marginTop:6, lineHeight:1.5 }}>
+                  Two natures pull at this one. Commit it to a side in Unit Info.
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

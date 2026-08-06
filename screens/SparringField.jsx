@@ -235,7 +235,7 @@ const SparringField = ({ run, setRun, go }) => {
         <div className="modal-backdrop" onClick={()=>setInfoId(null)}>
           <div onClick={e=>e.stopPropagation()} style={{
             background:'var(--abyss-1)', border:'1px solid var(--brass-deep)',
-            width:'min(980px, 94vw)', maxHeight:'90vh', overflowY:'auto', position:'relative',
+            width:'min(980px, 94%)', maxHeight:'88%', overflowY:'auto', position:'relative',
             boxShadow:'0 24px 80px rgba(0,0,0,0.7)' }}>
             <button onClick={()=>setInfoId(null)} title="Close"
               style={{ position:'absolute', top:10, right:12, zIndex:2, background:'transparent',
