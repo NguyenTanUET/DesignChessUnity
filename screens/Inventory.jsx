@@ -24,6 +24,11 @@ const GameOver = ({ won, run, onAgain, onMenu }) => {
   const relicsGained     = hasSnapshot ? Math.max(0, (run.relics     || []).length - (run.assignmentStart.relicsSize     || 0)) : (run.relics || []).length;
   const questItemsGained = hasSnapshot ? Math.max(0, (run.questItems || []).length - (run.assignmentStart.questItemsSize || 0)) : (run.questItems || []).length;
 
+  // augs held = loose in the hold + grafted into followers
+  const augsHeld = (run.augInventory || []).length
+    + (run.roster || []).reduce((n, f) => n + Object.values(f.augments || {}).filter(Boolean).length, 0);
+  const augsGained = hasSnapshot ? Math.max(0, augsHeld - (run.assignmentStart.augsSize || 0)) : augsHeld;
+
   const assignmentName = run.assignmentStart?.name || run.cls?.name || 'Unnamed Tide';
 
   const title    = won ? 'ASSIGNMENT COMPLETE' : 'ASSIGNMENT FAILED';
@@ -125,10 +130,11 @@ const GameOver = ({ won, run, onAgain, onMenu }) => {
 
         {/* Secondary spoils — victory only */}
         {won && (
-          <div style={{ display:'flex', gap:14, justifyContent:'center', marginBottom:28 }}>
-            <SpoilChip glyph="♘" label="Follower Received"   value={broodGained}/>
-            <SpoilChip glyph="✠" label="Relics Claimed"      value={relicsGained}/>
-            <SpoilChip glyph="◇" label="Quest Item Gathered" value={questItemsGained}/>
+          <div style={{ display:'flex', gap:14, justifyContent:'center', marginBottom:28, flexWrap:'wrap' }}>
+            <SpoilChip glyph="♘" label="Follower Received"     value={broodGained}/>
+            <SpoilChip glyph="✠" label="Relics Claimed"        value={relicsGained}/>
+            <SpoilChip glyph="⊕" label="Augmentations Claimed" value={augsGained}/>
+            <SpoilChip glyph="◇" label="Quest Item Gathered"   value={questItemsGained}/>
           </div>
         )}
 

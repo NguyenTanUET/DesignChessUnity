@@ -75,10 +75,10 @@ const forgeDefaultStage = (label) => ({
   enemies:{}, allies:{}, terrain:{}, props:{},
   objective:'exterminate', turns:20,
   routes:[],
-  rewards:{ coral:0, dna:0, lumin:0, relics:[], augs:[], units:[] },
+  rewards:{ coral:0, dna:0, lumin:0, relics:[], augs:[], units:[], quest:[] },
 });
 
-const forgeEmptyRewards = () => ({ coral:0, dna:0, lumin:0, relics:[], augs:[], units:[] });
+const forgeEmptyRewards = () => ({ coral:0, dna:0, lumin:0, relics:[], augs:[], units:[], quest:[] });
 
 // Best-effort migration for levels saved by earlier Forge versions.
 const forgeMigrate = (levels) => (levels || []).map(lvl => ({
@@ -910,7 +910,7 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
   }));
   const addDrop = (k, id) => { if (id) setReward(k, [...rewards[k], id]); };
   const removeDrop = (k, idx) => setReward(k, rewards[k].filter((_, i) => i !== idx));
-  const dropCount = rewards.relics.length + rewards.augs.length + rewards.units.length;
+  const dropCount = rewards.relics.length + rewards.augs.length + rewards.units.length + rewards.quest.length;
 
   // --- branch routes ---
   const addRoute = () => onEdit(cur => ({
@@ -1165,6 +1165,21 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
                 </span>
               );
             })}
+            {rewards.quest.map((id, i) => {
+              const q = QUEST_ITEMS.find(x => x.id === id);
+              return (
+                <span key={`q${i}`} title={q?.desc}
+                  style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 7px',
+                    background:'var(--abyss-1)', border:'1px solid oklch(0.4 0.1 290 / 0.6)',
+                    fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'oklch(0.7 0.13 290)',
+                    letterSpacing:'0.08em' }}>
+                  {q?.glyph || '◇'} {q?.name || id}
+                  <button onClick={()=>removeDrop('quest', i)} title="Remove"
+                    style={{ background:'transparent', border:'none', color:'var(--bone-dim)',
+                      cursor:'pointer', fontSize:10, padding:'0 1px', lineHeight:1 }}>×</button>
+                </span>
+              );
+            })}
           </div>
         )}
 
@@ -1188,6 +1203,11 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
             <option value="">♙ + Creature recruit…</option>
             {Object.values(FOLLOWER_ARCHETYPES).map(a =>
               <option key={a.key} value={a.key}>{a.glyph} {a.name} · {a.role}</option>)}
+          </select>
+          <select value="" title="Add quest item reward" style={selStyle}
+            onChange={e=>addDrop('quest', e.target.value)}>
+            <option value="">◇ + Quest item…</option>
+            {QUEST_ITEMS.map(q => <option key={q.id} value={q.id}>{q.glyph} {q.name}</option>)}
           </select>
         </div>
       </div>

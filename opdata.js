@@ -201,6 +201,29 @@ const OP_RELICS = [
     cost:{coral:220,lumin:95}, desc:'Once per run: revive a fallen follower at 1 Vigor.' },
 ];
 
+// ------------------ QUEST ITEMS ------------------
+// Bound relics of narrative, not power — cannot be discarded, granted by level rewards.
+const QUEST_ITEMS = [
+  { id:'q-tide-shard',      name:'Tide-Shard of the First Drowning', glyph:'⌘',
+    desc:'Drips brine that never dries. Whispers of an unfound reef.',
+    origin:'Recovered from the Wraith of Floor 2.' },
+  { id:'q-sealed-letter',   name:'Sealed Letter to the Brood-Mother', glyph:'✉',
+    desc:'A wax seal pressed with a tooth-mark. Cannot be opened yet.',
+    origin:'Found in the Trader\'s false floor.' },
+  { id:'q-broodmark',       name:'Broodmark Talisman', glyph:'☾',
+    desc:'Carved bone, warm to the touch. Something below recognises it.',
+    origin:'Torn from a fallen Overseer.' },
+  { id:'q-drowned-key',     name:'Key of the Drowned Vault', glyph:'⚷',
+    desc:'Corroded, but the teeth still catch. A door remembers this shape.',
+    origin:'Pried from a sunken strongbox.' },
+  { id:'q-witness-eye',     name:'Witness\'s Glass Eye', glyph:'◉',
+    desc:'It does not blink. It may still be watching.',
+    origin:'Left behind by the Witness of Marrow.' },
+  { id:'q-larval-hymn',     name:'Larval Hymn, Unsung', glyph:'♪',
+    desc:'A score written in a language no living throat can form.',
+    origin:'Etched into a nursery wall.' },
+];
+
 // ------------------ OVERSEERS ------------------
 // NPCs who watch over assignments. Their gaze changes what the mission feels like.
 const OVERSEERS = {

@@ -153,6 +153,9 @@ const AssignmentPanel = ({ run, setRun, go }) => {
         deckSize: (r.deck || []).length,
         relicsSize: (r.relics || []).length,
         questItemsSize: (r.questItems || []).length,
+        // augs live in two places: the hold, and grafted into followers
+        augsSize: (r.augInventory || []).length
+          + (r.roster || []).reduce((n, f) => n + Object.values(f.augments || {}).filter(Boolean).length, 0),
       },
     }));
     go('map');
