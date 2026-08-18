@@ -117,9 +117,23 @@ const LevelForge = ({ go }) => {
   });
   const [openId, setOpenId] = React.useState(null);
 
+  // Persist — DEBOUNCED. Drag-painting fires one state update per square; writing
+  // the whole library (JSON.stringify + synchronous localStorage I/O) on every one
+  // is what made the editor feel sluggish. Coalesce into one write per idle pause,
+  // and flush on the way out so nothing is ever lost.
+  const levelsRef = React.useRef(levels);
+  levelsRef.current = levels;
+  const firstRun = React.useRef(true);
   React.useEffect(() => {
-    localStorage.setItem('gok.customLevels', JSON.stringify(levels));
+    if (firstRun.current) { firstRun.current = false; return; } // don't rewrite what we just read
+    const t = setTimeout(() => {
+      try { localStorage.setItem('gok.customLevels', JSON.stringify(levelsRef.current)); } catch(e) {}
+    }, 400);
+    return () => clearTimeout(t);
   }, [levels]);
+  React.useEffect(() => () => {
+    try { localStorage.setItem('gok.customLevels', JSON.stringify(levelsRef.current)); } catch(e) {}
+  }, []);
 
   const open = levels.find(l => l.id === openId) || null;
 
@@ -645,7 +659,14 @@ const ForgeBoard = ({ stage, tool, enemyType, allyType, terrainType, terrainSide
   const maxZone = new Set(stage.maxZone);
   const objSet  = new Set(stage.objCells);
 
-  const applyTo = (key, mode) => {
+  // The live paint config lives in a ref so the two cell callbacks below can keep
+  // a STABLE identity. Stable callbacks + primitive props = React.memo actually
+  // holds, so painting one square re-renders one square instead of all w×h.
+  const cfg = React.useRef();
+  cfg.current = { tool, enemyType, allyType, terrainType, terrainSide, propType, stage, onEdit };
+
+  const applyTo = React.useCallback((key, mode) => {
+    const { tool, enemyType, allyType, terrainType, terrainSide, propType, onEdit } = cfg.current;
     onEdit(cur => {
       const has = (arr) => arr.includes(key);
       const add = (arr) => has(arr) ? arr : [...arr, key];
@@ -688,29 +709,30 @@ const ForgeBoard = ({ stage, tool, enemyType, allyType, terrainType, terrainSide
       }
       return {};
     });
-  };
+  }, []);
 
   // Decide add vs remove from the first cell pressed.
-  const modeFor = (key) => {
-    if (tool === 'blocked')   return blocked.has(key) ? 'rem' : 'add';
-    if (tool === 'deploy')    return deploy.has(key)  ? 'rem' : 'add';
-    if (tool === 'max')       return maxZone.has(key) ? 'rem' : 'add';
-    if (tool === 'objective') return objSet.has(key)  ? 'rem' : 'add';
+  const modeFor = React.useCallback((key) => {
+    const { tool, enemyType, allyType, terrainType, terrainSide, propType, stage } = cfg.current;
+    if (tool === 'blocked')   return stage.blocked.includes(key)  ? 'rem' : 'add';
+    if (tool === 'deploy')    return stage.deploy.includes(key)   ? 'rem' : 'add';
+    if (tool === 'max')       return stage.maxZone.includes(key)  ? 'rem' : 'add';
+    if (tool === 'objective') return stage.objCells.includes(key) ? 'rem' : 'add';
     if (tool === 'enemy')     return stage.enemies[key] === enemyType   ? 'rem' : 'add';
     if (tool === 'ally')      return (stage.allies || {})[key] === allyType ? 'rem' : 'add';
     if (tool === 'terrain')   { const t = forgeFormationVal(stage.terrain[key]); return (t && t.type === terrainType && t.side === terrainSide) ? 'rem' : 'add'; }
     if (tool === 'props')     return (stage.props || {})[key] === propType ? 'rem' : 'add';
     return 'add';
-  };
+  }, []);
 
-  const down = (key) => (e) => {
+  const onDown = React.useCallback((key, e) => {
     e.preventDefault();
     paint.current = { active:true, mode: modeFor(key) };
     applyTo(key, paint.current.mode);
-  };
-  const enter = (key) => () => {
+  }, [applyTo, modeFor]);
+  const onEnter = React.useCallback((key) => {
     if (paint.current.active) applyTo(key, paint.current.mode);
-  };
+  }, [applyTo]);
 
   const cells = [];
   for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) cells.push(`${r}-${c}`);
@@ -759,118 +781,21 @@ const ForgeBoard = ({ stage, tool, enemyType, allyType, terrainType, terrainSide
             background:'var(--abyss-1)', userSelect:'none',
           }}>
       {cells.map(key => {
-        const [r, c] = key.split('-').map(Number);
-        const dark = (r + c) % 2 === 1;
-        const isBlocked = blocked.has(key);
-        const inDeploy  = deploy.has(key);
-        const inMax     = maxZone.has(key);
-        const isObj     = objSet.has(key);
-        const enemyArch = stage.enemies[key] ? FOLLOWER_ARCHETYPES[stage.enemies[key]] : null;
-        const allyArch  = (stage.allies || {})[key] ? FOLLOWER_ARCHETYPES[stage.allies[key]] : null;
-        const creature  = enemyArch || allyArch;
-        const prop = (stage.props || {})[key] ? FORGE_PROPS.find(p => p.id === stage.props[key]) : null;
+        // Only PRIMITIVES cross this boundary, so React.memo on ForgeCell can
+        // bail out for every square the stroke did not touch.
         const fmVal = stage.terrain[key] ? forgeFormationVal(stage.terrain[key]) : null;
-        const terr = fmVal ? FORGE_TERRAINS.find(t => t.id === fmVal.type) : null;
-        const fmSide = fmVal ? FORGE_SIDES.find(s => s.id === fmVal.side) : null;
-
         return (
-          <div key={key}
-            onMouseDown={down(key)}
-            onMouseEnter={enter(key)}
-            title={[
-              key,
-              isBlocked && 'blocked', inDeploy && 'deploy', inMax && 'max zone',
-              isObj && `mark ${forgeMarkLetter(stage, key)}`,
-              enemyArch && `${enemyArch.name} · enemy`,
-              allyArch && `${allyArch.name} · ally`,
-              terr && `${fmSide?.label || ''} ${terr.name} — ${terr.effect}`,
-              prop && `${prop.name} — ${prop.desc}`,
-            ].filter(Boolean).join(' · ')}
-            style={{
-              width:cell, height:cell, position:'relative', cursor:'crosshair',
-              background: isBlocked
-                ? `repeating-linear-gradient(45deg, oklch(0.09 0.015 220) 0 6px, oklch(0.13 0.03 30) 6px 12px)`
-                : (dark ? 'oklch(0.14 0.02 220)' : 'oklch(0.22 0.03 220)'),
-              borderRight: c === w-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
-              borderBottom: r === h-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
-              display:'grid', placeItems:'center',
-            }}>
-            {/* formation — one signal per corner:
-                wash = terrain tint · top-right ribbon = SIDE · bottom-right badge = TYPE */}
-            {!isBlocked && terr && (
-              <>
-                <div style={{ position:'absolute', inset:0, pointerEvents:'none',
-                  background:`${terr.color.replace(')',' / 0.16)')}` }}/>
-                {fmSide && (
-                  <div style={{ position:'absolute', top:0, right:0, width:0, height:0, pointerEvents:'none',
-                    borderTop:`${Math.max(9, Math.round(cell*0.32))}px solid ${fmSide.color}`,
-                    borderLeft:`${Math.max(9, Math.round(cell*0.32))}px solid transparent`,
-                    filter:`drop-shadow(0 0 4px ${fmSide.color})`, opacity:0.95 }}/>
-                )}
-                <div style={{ position:'absolute', bottom:1, right:1, pointerEvents:'none',
-                  minWidth:Math.max(13, Math.round(cell*0.36)), height:Math.max(13, Math.round(cell*0.36)),
-                  display:'grid', placeItems:'center', padding:'0 1px',
-                  background:'rgba(0,8,12,0.75)', border:`1px solid ${terr.color}`,
-                  fontFamily:'Cinzel, serif', fontSize:Math.max(9, Math.round(cell*0.24)), lineHeight:1,
-                  color:terr.color, textShadow:`0 0 6px ${terr.color}` }}>{terr.glyph}</div>
-              </>
-            )}
-            {/* max-zone outline */}
-            {!isBlocked && inMax && (
-              <div style={{ position:'absolute', inset:2, border:'1px dashed var(--bio-dim)',
-                opacity:0.55, pointerEvents:'none' }}/>
-            )}
-            {/* deploy wash */}
-            {!isBlocked && inDeploy && (
-              <div style={{ position:'absolute', inset:0, background:'oklch(0.82 0.16 188 / 0.14)',
-                pointerEvents:'none' }}/>
-            )}
-            {/* objective mark + letter — top-left, dark-backed so washes can't drown it */}
-            {!isBlocked && isObj && (
-              <div style={{ position:'absolute', top:1, left:1, pointerEvents:'none',
-                padding:'1px 3px', background:'rgba(0,8,12,0.75)', border:'1px solid var(--brass-deep)',
-                fontFamily:'JetBrains Mono, monospace', fontSize:Math.max(9, Math.round(cell*0.22)),
-                lineHeight:1, color:'var(--brass)', textShadow:'0 0 8px var(--brass)' }}>
-                ⚑{forgeMarkLetter(stage, key)}
-              </div>
-            )}
-            {/* prop — centred scenery when the square is free; shrinks to a
-                bottom-left badge when a creature stands on it */}
-            {!isBlocked && prop && (
-              creature ? (
-                <div style={{ position:'absolute', bottom:1, left:1, pointerEvents:'none',
-                  minWidth:Math.max(13, Math.round(cell*0.36)), height:Math.max(13, Math.round(cell*0.36)),
-                  display:'grid', placeItems:'center', padding:'0 1px',
-                  background:'rgba(0,8,12,0.75)', border:`1px solid ${prop.color}`,
-                  fontFamily:'Cinzel, serif', fontSize:Math.max(9, Math.round(cell*0.24)), lineHeight:1,
-                  color:prop.color, textShadow:`0 0 6px ${prop.color}` }}>{prop.glyph}</div>
-              ) : (
-                <div style={{ position:'absolute', inset:0, display:'grid', placeItems:'center',
-                  pointerEvents:'none' }}>
-                  <span style={{ fontFamily:'Cinzel, serif', fontSize:cell*0.46, lineHeight:1,
-                    color:prop.color, opacity:0.8,
-                    textShadow:`0 0 8px ${prop.color.replace(')',' / 0.5)')}, 0 2px 4px rgba(0,0,0,0.8)` }}>
-                    {prop.glyph}
-                  </span>
-                </div>
-              )
-            )}
-
-            {/* creature — archetype colour carries IDENTITY, the underline carries
-                SIDE (coral = enemy · bio = ally, same accent-bar language as Sparring) */}
-            {!isBlocked && creature && (
-              <div style={{ position:'relative', pointerEvents:'none', textAlign:'center', lineHeight:1 }}>
-                <div style={{ fontFamily:'Cinzel, serif', fontSize:cell*0.58,
-                  color:creature.color,
-                  textShadow:`0 0 10px ${creature.color}, 0 2px 4px rgba(0,0,0,0.85)` }}>
-                  {creature.glyph}
-                </div>
-                <div style={{ height:Math.max(2, Math.round(cell*0.05)), margin:'1px auto 0', width:'68%',
-                  background: enemyArch ? 'var(--coral)' : 'var(--bio)',
-                  boxShadow: `0 0 6px ${enemyArch ? 'var(--coral)' : 'var(--bio)'}` }}/>
-              </div>
-            )}
-          </div>
+          <ForgeCell key={key} ck={key} cell={cell} w={w} h={h}
+            isBlocked={blocked.has(key)}
+            inDeploy={deploy.has(key)}
+            inMax={maxZone.has(key)}
+            mark={objSet.has(key) ? forgeMarkLetter(stage, key) : null}
+            enemyKey={stage.enemies[key] || null}
+            allyKey={(stage.allies || {})[key] || null}
+            propId={(stage.props || {})[key] || null}
+            terrType={fmVal ? fmVal.type : null}
+            terrSide={fmVal ? fmVal.side : null}
+            onDown={onDown} onEnter={onEnter}/>
         );
       })}
           </div>
@@ -879,6 +804,107 @@ const ForgeBoard = ({ stage, tool, enemyType, allyType, terrainType, terrainSide
     </div>
   );
 };
+
+// One square. Memoised on primitive props — a stroke re-renders only the squares
+// it actually changed, instead of every square on the board.
+const ForgeCell = React.memo(({ ck, cell, w, h, isBlocked, inDeploy, inMax, mark,
+  enemyKey, allyKey, propId, terrType, terrSide, onDown, onEnter }) => {
+  const [r, c] = ck.split('-').map(Number);
+  const dark = (r + c) % 2 === 1;
+  const enemyArch = enemyKey ? FOLLOWER_ARCHETYPES[enemyKey] : null;
+  const allyArch  = allyKey  ? FOLLOWER_ARCHETYPES[allyKey]  : null;
+  const creature  = enemyArch || allyArch;
+  const prop   = propId   ? FORGE_PROPS.find(p => p.id === propId)   : null;
+  const terr   = terrType ? FORGE_TERRAINS.find(t => t.id === terrType) : null;
+  const fmSide = terrSide ? FORGE_SIDES.find(s => s.id === terrSide) : null;
+  const badge = Math.max(13, Math.round(cell*0.36));
+  const badgeFont = Math.max(9, Math.round(cell*0.24));
+
+  return (
+    <div
+      onMouseDown={(e)=>onDown(ck, e)}
+      onMouseEnter={()=>onEnter(ck)}
+      title={[
+        ck,
+        isBlocked && 'blocked', inDeploy && 'deploy', inMax && 'max zone',
+        mark && `mark ${mark}`,
+        enemyArch && `${enemyArch.name} · enemy`,
+        allyArch && `${allyArch.name} · ally`,
+        terr && `${fmSide?.label || ''} ${terr.name} — ${terr.effect}`,
+        prop && `${prop.name} — ${prop.desc}`,
+      ].filter(Boolean).join(' · ')}
+      style={{
+        width:cell, height:cell, position:'relative', cursor:'crosshair',
+        background: isBlocked
+          ? `repeating-linear-gradient(45deg, oklch(0.09 0.015 220) 0 6px, oklch(0.13 0.03 30) 6px 12px)`
+          : (dark ? 'oklch(0.14 0.02 220)' : 'oklch(0.22 0.03 220)'),
+        borderRight: c === w-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
+        borderBottom: r === h-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
+        display:'grid', placeItems:'center',
+      }}>
+      {/* formation — wash · top-right ribbon = SIDE · bottom-right badge = TYPE */}
+      {!isBlocked && terr && (
+        <>
+          <div style={{ position:'absolute', inset:0, pointerEvents:'none',
+            background:`${terr.color.replace(')',' / 0.16)')}` }}/>
+          {fmSide && (
+            <div style={{ position:'absolute', top:0, right:0, width:0, height:0, pointerEvents:'none',
+              borderTop:`${Math.max(9, Math.round(cell*0.32))}px solid ${fmSide.color}`,
+              borderLeft:`${Math.max(9, Math.round(cell*0.32))}px solid transparent`, opacity:0.95 }}/>
+          )}
+          <div style={{ position:'absolute', bottom:1, right:1, pointerEvents:'none',
+            minWidth:badge, height:badge, display:'grid', placeItems:'center', padding:'0 1px',
+            background:'rgba(0,8,12,0.75)', border:`1px solid ${terr.color}`,
+            fontFamily:'Cinzel, serif', fontSize:badgeFont, lineHeight:1,
+            color:terr.color }}>{terr.glyph}</div>
+        </>
+      )}
+      {!isBlocked && inMax && (
+        <div style={{ position:'absolute', inset:2, border:'1px dashed var(--bio-dim)',
+          opacity:0.55, pointerEvents:'none' }}/>
+      )}
+      {!isBlocked && inDeploy && (
+        <div style={{ position:'absolute', inset:0, background:'oklch(0.82 0.16 188 / 0.14)',
+          pointerEvents:'none' }}/>
+      )}
+      {!isBlocked && mark && (
+        <div style={{ position:'absolute', top:1, left:1, pointerEvents:'none',
+          padding:'1px 3px', background:'rgba(0,8,12,0.75)', border:'1px solid var(--brass-deep)',
+          fontFamily:'JetBrains Mono, monospace', fontSize:Math.max(9, Math.round(cell*0.22)),
+          lineHeight:1, color:'var(--brass)' }}>
+          ⚑{mark}
+        </div>
+      )}
+      {/* prop — centred when the square is free, corner badge when occupied */}
+      {!isBlocked && prop && (
+        creature ? (
+          <div style={{ position:'absolute', bottom:1, left:1, pointerEvents:'none',
+            minWidth:badge, height:badge, display:'grid', placeItems:'center', padding:'0 1px',
+            background:'rgba(0,8,12,0.75)', border:`1px solid ${prop.color}`,
+            fontFamily:'Cinzel, serif', fontSize:badgeFont, lineHeight:1,
+            color:prop.color }}>{prop.glyph}</div>
+        ) : (
+          <div style={{ position:'absolute', inset:0, display:'grid', placeItems:'center',
+            pointerEvents:'none' }}>
+            <span style={{ fontFamily:'Cinzel, serif', fontSize:cell*0.46, lineHeight:1,
+              color:prop.color, opacity:0.8 }}>{prop.glyph}</span>
+          </div>
+        )
+      )}
+      {/* creature — archetype colour = identity · underline = side */}
+      {!isBlocked && creature && (
+        <div style={{ position:'relative', pointerEvents:'none', textAlign:'center', lineHeight:1 }}>
+          <div style={{ fontFamily:'Cinzel, serif', fontSize:cell*0.58, color:creature.color,
+            textShadow:`0 2px 4px rgba(0,0,0,0.85)` }}>
+            {creature.glyph}
+          </div>
+          <div style={{ height:Math.max(2, Math.round(cell*0.05)), margin:'1px auto 0', width:'68%',
+            background: enemyArch ? 'var(--coral)' : 'var(--bio)' }}/>
+        </div>
+      )}
+    </div>
+  );
+});
 
 // =============================================================================
 // STAGE SETTINGS — right rail (label, size, objective, branch routes, census)

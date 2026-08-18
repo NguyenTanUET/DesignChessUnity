@@ -491,5 +491,6 @@ Object.assign(window, {
   CLASSIFICATIONS, FACETS, FACET_PAIRS, classificationById, classValueAt,
   classificationFor, facetById, facetPairById, facetsOfPair,
   rollFacetPair, resolveFacetPair,
+  QUEST_ITEMS,
 });
 })();
