@@ -126,6 +126,7 @@ const MainMenu = ({ go, setRun }) => {
             { id:'new', label:'Start Game', kind:'primary', onClick: spawnNewBrood },
             { id:'forge', label:'Level Editor', kind:'ghost', onClick: ()=>go('level-forge') },
             { id:'unit', label:'Unit Editor', kind:'ghost', onClick: ()=>go('unit-editor') },
+            { id:'dialog', label:'Dialog Editor', kind:'ghost', onClick: ()=>go('dialog-editor') },
             { id:'opts', label:'Settings', kind:'ghost', onClick: ()=>go('settings') },
             { id:'credit', label:'Credits', kind:'ghost' },
             { id:'exit', label:'Exit', kind:'ghost' },
