@@ -49,6 +49,13 @@ const MainMenu = ({ go, setRun }) => {
       augInventory: ['a-lantern-eye','a-brine-humors','a-barnacle-plate','a-cartilage-foil','a-ganglion-knot','a-abyssal-pupil','a-saltwater-lung','a-coral-sail','a-nacre-shell','a-vitreous-lens','a-black-ichor','a-hive-mind','a-eel-ribbon','a-ossuary-spine'],
       relicsOwned: ['r-lantern','r-sigil'],
       relicsLoadout: ['r-lantern'],
+      // Seeded so both climb shapes are visible from the first run: one counter
+      // track part-way up, one forge track a short pour from ascending.
+      relicProgress: {
+        'r-lantern': { level:1, kills:62, wins:0, lumin:0 },
+        'r-sigil':   { level:1, kills:0,  wins:0, lumin:1980 },
+      },
+      commanderLevels: { Leoric: 1 },
       augLoadout: [],
       traderPurchased: {},
       pickedAssignmentId: null,

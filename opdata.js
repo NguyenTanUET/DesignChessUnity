@@ -182,24 +182,165 @@ const EVOLUTION = {
 };
 
 // ------------------ RELICS (Operation Center flavor) ------------------
+// Each relic belongs to an UPGRADE CLASS, which decides how it climbs LV1 → LV3,
+// and carries that class's per-relic bindings: quest items for archived relics,
+// a commander's name for bestowned ones.
+// `tiers` is the effect at LV1 / LV2 / LV3 — tiers[0] mirrors `desc`.
 const OP_RELICS = [
   { id:'r-lantern',    name:'Anglerfish Lantern', glyph:'◉', rarity:'common',    tier:1,
-    cost:{coral:35,lumin:10}, desc:'Begin each battle with thy Sovereign\'s flank lit.' },
+    cls:'organic',
+    cost:{coral:35,lumin:10}, desc:'Begin each battle with thy Sovereign\'s flank lit.',
+    tiers:[
+      'Begin each battle with thy Sovereign\'s flank lit.',
+      'Both flanks lit, and one rank ahead of them.',
+      'The whole opening rank burns. Nothing ambushes from it.',
+    ] },
   { id:'r-chalice',    name:'Chalice of Brine',   glyph:'⚱', rarity:'rare',      tier:2,
-    cost:{coral:80,lumin:25}, desc:'Sacrificing a larva grants +4 Refined Coral after battle.' },
+    cls:'sediment',
+    cost:{coral:80,lumin:25}, desc:'Sacrificing a larva grants +4 Refined Coral after battle.',
+    tiers:[
+      'Sacrificing a larva grants +4 Refined Coral after battle.',
+      'Sacrificing a larva grants +8 Refined Coral after battle.',
+      '+12 Refined Coral, and the nearest ally is healed 1 Vigor.',
+    ] },
   { id:'r-crown',      name:'Barnacle Crown',     glyph:'♔', rarity:'rare',      tier:2,
-    cost:{coral:95,lumin:30}, desc:'Evolved larvae may become any minor evolution.' },
+    cls:'forged',
+    cost:{coral:95,lumin:30}, desc:'Evolved larvae may become any minor evolution.',
+    tiers:[
+      'Evolved larvae may become any minor evolution.',
+      'Evolved larvae may become any minor evolution, or one major.',
+      'Evolved larvae may become any evolution, at no Coral cost.',
+    ] },
   { id:'r-shell',      name:'Whisper-Shell',      glyph:'☗', rarity:'uncommon',  tier:1,
-    cost:{coral:55,lumin:15}, desc:'See one foe move ahead on odd turns.' },
+    cls:'organic',
+    cost:{coral:55,lumin:15}, desc:'See one foe move ahead on odd turns.',
+    tiers:[
+      'See one foe move ahead on odd turns.',
+      'See one foe move ahead every turn.',
+      'See two foe moves ahead every turn.',
+    ] },
   { id:'r-tooth',      name:'Megalodon Tooth',    glyph:'◣', rarity:'legendary', tier:3,
-    cost:{coral:200,lumin:80}, desc:'Once per floor: copy a slain foe into thy brood.' },
+    cls:'archived', quests:['q-tide-shard','q-drowned-key'],
+    cost:{coral:200,lumin:80}, desc:'Once per floor: copy a slain foe into thy brood.',
+    tiers:[
+      'Once per floor: copy a slain foe into thy brood.',
+      'Twice per floor: copy a slain foe into thy brood.',
+      'Twice per floor, and the copy keeps the augmentations it died with.',
+    ] },
   { id:'r-sigil',      name:'Trench-Sigil',       glyph:'✠', rarity:'common',    tier:1,
-    cost:{coral:40,lumin:12}, desc:'Outriders gain +1 range on opening breach.' },
+    cls:'forged',
+    cost:{coral:40,lumin:12}, desc:'Outriders gain +1 range on opening breach.',
+    tiers:[
+      'Outriders gain +1 range on opening breach.',
+      'Outriders gain +2 range on opening breach.',
+      '+2 range, and the breach cannot be intercepted.',
+    ] },
   { id:'r-pendulum',   name:'Abyssal Pendulum',   glyph:'↯', rarity:'rare',      tier:2,
-    cost:{coral:110,lumin:40}, desc:'Slows one enemy piece each battle by 1 rank.' },
+    cls:'sediment',
+    cost:{coral:110,lumin:40}, desc:'Slows one enemy piece each battle by 1 rank.',
+    tiers:[
+      'Slows one enemy piece each battle by 1 rank.',
+      'Slows two enemy pieces each battle by 1 rank.',
+      'Slows two enemy pieces each battle by 2 ranks.',
+    ] },
   { id:'r-drowned-cross', name:'Cross of the Drowned', glyph:'✟', rarity:'legendary', tier:3,
-    cost:{coral:220,lumin:95}, desc:'Once per run: revive a fallen follower at 1 Vigor.' },
+    cls:'bestowned', commander:'Leoric',
+    cost:{coral:220,lumin:95}, desc:'Once per run: revive a fallen follower at 1 Vigor.',
+    tiers:[
+      'Once per run: revive a fallen follower at 1 Vigor.',
+      'Once per run: revive a fallen follower at half Vigor.',
+      'Twice per run: revive a fallen follower at full Vigor.',
+    ] },
 ];
+
+// The effect a relic gives at a given level, falling back to its base text.
+const relicEffectAt = (relic, level) =>
+  (relic?.tiers || [])[(level || 1) - 1] || relic?.desc || '';
+
+// ------------------ RELIC UPGRADE CLASSES ------------------
+// Five ways a relic climbs. RELIC_UPGRADES[cls][0] is the LV1→LV2 requirement,
+// [1] the LV2→LV3 one. Cumulative goals are absolute totals, not increments.
+const RELIC_CLASSES = [
+  { id:'organic',   name:'Organic',   glyph:'❦', color:'oklch(0.72 0.14 145)',
+    blurb:'Living tissue. It feeds on slaughter and thickens.' },
+  { id:'forged',    name:'Forged',    glyph:'⚒', color:'oklch(0.78 0.13 70)',
+    blurb:'Beaten metal. Pour light into the work and it holds shape.' },
+  { id:'sediment',  name:'Sediment',  glyph:'☰', color:'oklch(0.7 0.11 235)',
+    blurb:'Settles in layers. Victory packs it down, then light seals it.' },
+  { id:'archived',  name:'Archived',  glyph:'⌘', color:'oklch(0.7 0.13 290)',
+    blurb:'Catalogued. It answers only to the object it was filed beside.' },
+  { id:'bestowned', name:'Bestowned', glyph:'♔', color:'oklch(0.75 0.12 25)',
+    blurb:'A gift with a name on it. It rises when its giver rises.' },
+];
+const relicClassById = (id) => RELIC_CLASSES.find(c => c.id === id) || RELIC_CLASSES[0];
+
+const RELIC_UPGRADES = {
+  organic: [
+    { track:'kills', goal:100, unit:'kills', label:'Slay 100 enemy pieces',
+      note:'Counted only while this relic is carried · Assignment · PvP' },
+    { track:'kills', goal:300, unit:'kills', label:'Slay 300 enemy pieces',
+      note:'Total, including the first 100 · Assignment · PvP' },
+  ],
+  forged: [
+    { track:'lumin', goal:2000, unit:'lumin', forge:true,
+      label:'Forge 2,000 Lumin Deposit into it' },
+    { track:'lumin', goal:6000, unit:'lumin', forge:true,
+      label:'Forge 6,000 Lumin Deposit into it',
+      note:'Total, including the first 2,000' },
+  ],
+  sediment: [
+    { track:'wins', goal:20, unit:'wins',
+      label:'Win 20 battles carrying it', note:'Assignment · PvP' },
+    { track:'lumin', goal:6000, unit:'lumin', forge:true,
+      label:'Forge 6,000 Lumin Deposit into it' },
+  ],
+  archived: [
+    { track:'quest', label:'Present its bound relic-item' },
+    { track:'quest', label:'Present its second bound relic-item' },
+  ],
+  bestowned: [
+    { track:'commander', label:'Rises with its bound Commander' },
+    { track:'commander', label:'Rises with its bound Commander' },
+  ],
+};
+
+// The requirement standing between a relic and its next level (null at LV3).
+const relicRequirement = (relic, level) => {
+  const steps = RELIC_UPGRADES[relic?.cls] || [];
+  return steps[(level || 1) - 1] || null;
+};
+
+// A relic's stored progress, with every counter defaulted.
+const relicProgressOf = (run, relicId) => {
+  const p = (run?.relicProgress || {})[relicId] || {};
+  return { level: p.level || 1, kills: p.kills || 0, wins: p.wins || 0, lumin: p.lumin || 0 };
+};
+
+// How far along the current requirement this relic is.
+//   { req, have, goal, ratio, met, reason }  — reason explains a blocked climb.
+const relicClimb = (run, relic) => {
+  const prog = relicProgressOf(run, relic.id);
+  const req = relicRequirement(relic, prog.level);
+  if (!req) return { prog, req:null, met:false, maxed:true };
+
+  if (req.track === 'quest') {
+    const questId = (relic.quests || [])[prog.level - 1];
+    const item = (QUEST_ITEMS || []).find(q => q.id === questId) || null;
+    const held = (run?.questItems || []).some(q => (q.id || q) === questId);
+    return { prog, req, item, met:held, have:held?1:0, goal:1, ratio:held?1:0,
+      reason: held ? null : `${item ? item.name : 'Its bound item'} has not been recovered.` };
+  }
+  if (req.track === 'commander') {
+    const lvl = (run?.commanderLevels || {})[relic.commander] || 1;
+    return { prog, req, cmdLevel:lvl, met: lvl > prog.level, have:lvl, goal:prog.level + 1,
+      ratio: Math.min(1, lvl / (prog.level + 1)),
+      reason: lvl > prog.level ? null : `${relic.commander} is still LV${lvl}.` };
+  }
+  const have = prog[req.track] || 0;
+  return { prog, req, have, goal:req.goal, ratio: Math.min(1, have / req.goal),
+    met: have >= req.goal,
+    reason: have >= req.goal ? null : `${(req.goal - have).toLocaleString()} ${req.unit} to go.` };
+};
 
 // ------------------ QUEST ITEMS ------------------
 // Bound relics of narrative, not power — cannot be discarded, granted by level rewards.
@@ -492,5 +633,7 @@ Object.assign(window, {
   classificationFor, facetById, facetPairById, facetsOfPair,
   rollFacetPair, resolveFacetPair,
   QUEST_ITEMS,
+  RELIC_CLASSES, RELIC_UPGRADES, relicClassById, relicRequirement,
+  relicProgressOf, relicClimb, relicEffectAt,
 });
 })();
