@@ -22,14 +22,11 @@ const MainMenu = ({ go, setRun }) => {
     const larvae = roster.filter(f => f.archetype === 'larva');
     const initialLineups = {
       4:  [buildLineup(4,  'Bone Spear',    r => [...majors.slice(0,4), ...larvae.slice(0,4)])],
-      6:  [
-        buildLineup(6,  'Reef Vanguard', r => [...majors.slice(0,6), ...larvae.slice(0,6)]),
-        buildLineup(6,  'Hooked Net',    r => [...majors.slice(2,8), ...larvae.slice(0,6)]),
-      ],
       8:  [
         buildLineup(8,  'Standard Tide', r => [...majors.slice(0,8), ...larvae.slice(0,8)]),
+        buildLineup(8,  'Hooked Net',    r => [...majors.slice(2,10), ...larvae.slice(0,8)]),
       ],
-      10: [],
+      12: [],
     };
 
     setRun({
@@ -61,7 +58,7 @@ const MainMenu = ({ go, setRun }) => {
       pickedAssignmentId: null,
       deployedAssignmentId: null,
       lineups: initialLineups,
-      lineupWidth: 6,
+      lineupWidth: DEFAULT_FORMATION_W,
     });
     go('op-hub');
   };

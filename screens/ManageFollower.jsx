@@ -2,7 +2,7 @@
 //   1. Unit Info  · stats, biography, archetype info
 //   2. Evolution  · 3-tier DNA tree
 //   3. Item       · Augmentation + Relic + Quest Items
-//   4. Lineup     · 4 formations (W4 / W6 / W8 / W10)
+//   4. Lineup     · one formation per width in FORMATIONS (W4 / W8 / W12)
 const ManageFollower = ({ run, setRun, go, initialSubTab }) => {
   const roster = run.roster || [];
   const [selId, setSelId] = React.useState(roster[0]?.instanceId || null);
@@ -73,7 +73,7 @@ const SubNav = ({ active, onChange }) => {
     { id:'unit-info', label:'Unit Info',  glyph:'◈', desc:'Specimen biography & patterns' },
     { id:'evolution', label:'Evolution',  glyph:'✧', desc:'DNA Altar · 3-tier ascension' },
     { id:'item',      label:'Item',       glyph:'⌬', desc:'Augmentation · Relic · Quest' },
-    { id:'lineup',    label:'Lineup',     glyph:'▦', desc:'Battle formations · W4/W6/W8/W10' },
+    { id:'lineup',    label:'Lineup',     glyph:'▦', desc:`Battle formations · ${FORMATIONS.map(f => f.label).join('/')}` },
   ];
   return (
     <div style={{

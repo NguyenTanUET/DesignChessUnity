@@ -4,7 +4,8 @@ const UnitInfoTab = ({ run, setRun, sel, arch, go, togglePool, setSubTab }) => {
   const slotCount = sel.augSlotCount ?? 5;
   const [augPickerSlot, setAugPickerSlot] = React.useState(null); // slot whose picker is open
   const [viewSlot, setViewSlot] = React.useState(null);           // installed slot whose info is open
-  window.useEscClose(() => { setAugPickerSlot(null); setViewSlot(null); });
+  const [facetPickerOpen, setFacetPickerOpen] = React.useState(false); // graft-a-facet picker
+  window.useEscClose(() => { setAugPickerSlot(null); setViewSlot(null); setFacetPickerOpen(false); });
 
   // Compute which slots are grown (same hash as AugSlotMap)
   const grownIdx = React.useMemo(() => {
@@ -43,19 +44,30 @@ const UnitInfoTab = ({ run, setRun, sel, arch, go, togglePool, setSubTab }) => {
     }));
   };
 
-  // --- Classification (species, fixed) & Facet (one side of an opposed pair) ---
+  // --- Classification (species, fixed) & Facet (grafted from a bought set) ---
   const cls       = classificationById(sel.classification || classificationFor(sel.archetype));
   const clsValue  = classValueAt(cls, sel.evoTier);
-  const facetPair = resolveFacetPair(sel);
-  const pairSides = facetsOfPair(facetPair);
   const chosenFacet = sel.facet ? facetById(sel.facet) : null;
+  const facetPair   = resolveFacetPair(sel);
 
-  const chooseFacet = (facetId) => {
-    setRun(r => ({
-      ...r,
-      roster: r.roster.map(f => f.instanceId === sel.instanceId
-        ? { ...f, facetPair: facetPair?.id || f.facetPair, facet: facetId } : f),
-    }));
+  // Graft one side of an owned set. Permanent: the set is spent, and a follower
+  // that already carries a facet can never take another.
+  const graftFacet = (facetId) => {
+    const f = facetById(facetId);
+    if (!f || sel.facet) return;
+    setRun(r => {
+      const inv = r.facetInventory || {};
+      if (!(inv[f.pair] > 0)) return r;
+      const me = r.roster.find(x => x.instanceId === sel.instanceId);
+      if (!me || me.facet) return r;
+      return {
+        ...r,
+        facetInventory: { ...inv, [f.pair]: inv[f.pair] - 1 },
+        roster: r.roster.map(x => x.instanceId === sel.instanceId
+          ? { ...x, facet: f.id, facetPair: f.pair } : x),
+      };
+    });
+    setFacetPickerOpen(false);
   };
 
   // Piece-type tag color map
@@ -166,7 +178,7 @@ const UnitInfoTab = ({ run, setRun, sel, arch, go, togglePool, setSubTab }) => {
           </div>
         </div>
 
-        {/* FACET — one side of an opposed pair, the player's to commit */}
+        {/* FACET — grafted from a facet set bought at the Trader. One per follower, forever. */}
         <div style={{ padding:'16px 18px', background:'var(--abyss-1)',
           border:'1px solid var(--abyss-3)',
           borderTop:`3px solid ${chosenFacet ? chosenFacet.color : 'var(--abyss-4)'}` }}>
@@ -174,62 +186,53 @@ const UnitInfoTab = ({ run, setRun, sel, arch, go, togglePool, setSubTab }) => {
             <div>
               <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.25em',
                 color:'var(--bone-dim)', textTransform:'uppercase' }}>
-                Facet · {facetPair ? facetPair.name : 'Temperament'}
+                Facet{facetPair ? ` · ${facetPair.glyph} ${facetPair.name}` : ' · Temperament'}
               </div>
               <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, fontStyle:'italic',
                 color:'var(--bone-dim)', marginTop:2 }}>
-                {facetPair ? facetPair.axis : 'Two natures pull against each other.'}
+                {facetPair ? facetPair.axis : 'Born without a nature — one may be grafted in.'}
               </div>
             </div>
             <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, letterSpacing:'0.18em',
-              color: chosenFacet ? 'var(--bio-dim)' : 'var(--brass)' }}>
-              {chosenFacet ? '◆ COMMITTED' : '○ CHOOSE ONE'}
+              color: chosenFacet ? 'var(--bio-dim)' : 'var(--bone-dim)' }}>
+              {chosenFacet ? '⊘ PERMANENT' : '○ EMPTY'}
             </div>
           </div>
 
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 26px 1fr', gap:8, alignItems:'stretch', marginTop:12 }}>
-            {pairSides.map((f, i) => {
-              const on = sel.facet === f.id;
-              const dim = !!sel.facet && !on;   // the road not taken
-              return (
-                <React.Fragment key={f.id}>
-                  {i === 1 && (
-                    <div style={{ display:'grid', placeItems:'center', fontFamily:'Cinzel, serif',
-                      fontSize:15, color:'var(--brass-dim)' }}>×</div>
-                  )}
-                  <button onClick={()=>chooseFacet(f.id)} title={f.blurb}
-                    style={{
-                      padding:'12px 12px', textAlign:'left', cursor:'pointer',
-                      background: on ? f.color.replace(')',' / 0.14)') : 'var(--abyss-0)',
-                      border:`1px solid ${on ? f.color : 'var(--abyss-4)'}`,
-                      color:'var(--bone)', opacity: dim ? 0.45 : 1, transition:'all 0.15s',
-                    }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <span style={{ fontFamily:'Cinzel, serif', fontSize:19, color:f.color,
-                        textShadow: on ? `0 0 10px ${f.color}` : 'none' }}>{f.glyph}</span>
-                      <span style={{ fontFamily:'Cinzel, serif', fontSize:14, letterSpacing:'0.04em',
-                        color: on ? f.color : 'var(--bone)' }}>{f.name}</span>
-                      {on && <span style={{ marginLeft:'auto', fontSize:10, color:f.color }}>◆</span>}
-                    </div>
-                    <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:11.5, fontStyle:'italic',
-                      color:'var(--bone-dim)', marginTop:5, lineHeight:1.4 }}>
-                      {f.blurb}
-                    </div>
-                    <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12.5, color:'var(--bone)',
-                      marginTop:7, paddingTop:7, borderTop:'1px dashed var(--abyss-3)', lineHeight:1.5 }}>
-                      {f.desc(sel.evoTier)}
-                    </div>
-                  </button>
-                </React.Fragment>
-              );
-            })}
-          </div>
+          {chosenFacet ? (
+            <div style={{ marginTop:12, padding:'12px 14px',
+              background: chosenFacet.color.replace(')',' / 0.12)'), border:`1px solid ${chosenFacet.color}` }}>
+              <div style={{ display:'flex', alignItems:'center', gap:9 }}>
+                <span style={{ fontFamily:'Cinzel, serif', fontSize:22, color:chosenFacet.color,
+                  textShadow:`0 0 10px ${chosenFacet.color}` }}>{chosenFacet.glyph}</span>
+                <span style={{ fontFamily:'Cinzel, serif', fontSize:16, letterSpacing:'0.04em',
+                  color:chosenFacet.color }}>{chosenFacet.name}</span>
+              </div>
+              <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12, fontStyle:'italic',
+                color:'var(--bone-dim)', marginTop:5 }}>{chosenFacet.blurb}</div>
+              <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, color:'var(--bone)',
+                marginTop:8, paddingTop:8, borderTop:'1px dashed var(--abyss-3)', lineHeight:1.5 }}>
+                {chosenFacet.desc(sel.evoTier)}
+              </div>
+            </div>
+          ) : (
+            <button onClick={()=>setFacetPickerOpen(true)}
+              style={{ marginTop:12, width:'100%', padding:'18px 12px', cursor:'pointer',
+                background:'var(--abyss-0)', border:'1px dashed var(--abyss-4)', color:'var(--bone-dim)',
+                display:'grid', placeItems:'center', gap:4 }}>
+              <span style={{ fontFamily:'Cinzel, serif', fontSize:22, color:'var(--brass-dim)' }}>+</span>
+              <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, letterSpacing:'0.2em',
+                textTransform:'uppercase' }}>
+                Graft a Facet · {FACET_PAIRS.reduce((n, p) => n + facetSetsHeld(run, p.id), 0)} set(s) in hold
+              </span>
+            </button>
+          )}
 
           <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
             letterSpacing:'0.15em', marginTop:8, textTransform:'uppercase' }}>
             {chosenFacet
-              ? `‣ ${chosenFacet.name} deepens each evolution${chosenFacet.kind === 'mixed' ? ' · its bane fades' : ''}`
-              : '‣ Only one nature may take root'}
+              ? `‣ ${chosenFacet.name} deepens each evolution${chosenFacet.kind === 'mixed' ? ' · its bane fades' : ''} · cannot be removed`
+              : '‣ One facet per follower · a grafted facet never comes out'}
           </div>
         </div>
       </div>
@@ -390,6 +393,102 @@ const UnitInfoTab = ({ run, setRun, sel, arch, go, togglePool, setSubTab }) => {
           </div>
         );
       })()}
+
+      {facetPickerOpen && !chosenFacet && (
+        <FacetGraftPicker run={run} follower={sel} go={go}
+          onGraft={graftFacet} onClose={()=>setFacetPickerOpen(false)}/>
+      )}
+    </div>
+  );
+};
+
+// Graft picker — every facet set in the hold, both sides of each. Picking a side
+// arms the graft; the second click commits it, because there is no undoing it.
+const FacetGraftPicker = ({ run, follower, go, onGraft, onClose }) => {
+  const [armed, setArmed] = React.useState(null); // facet id awaiting the final click
+  const owned = FACET_PAIRS.filter(p => facetSetsHeld(run, p.id) > 0);
+  const armedFacet = armed ? facetById(armed) : null;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}
+        style={{ maxWidth:640, maxHeight:'88%', overflowY:'auto' }}>
+        <div className="eyebrow" style={{ color:'var(--brass)' }}>◐ Graft a Facet</div>
+        <h2 style={{ margin:'6px 0 4px', fontSize:24, fontFamily:'Cinzel, serif', color:'var(--bone)' }}>
+          {follower.name}
+        </h2>
+        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'oklch(0.72 0.14 25)',
+          letterSpacing:'0.18em', marginBottom:16 }}>
+          ◣ PERMANENT — A GRAFTED FACET CAN NEVER BE REMOVED OR REPLACED
+        </div>
+
+        {owned.length === 0 ? (
+          <div style={{ padding:'26px 16px', border:'1px dashed var(--abyss-4)', textAlign:'center' }}>
+            <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:14, fontStyle:'italic',
+              color:'var(--bone-dim)' }}>No facet sets in the hold. The Trader keeps them in stock.</div>
+            {go && (
+              <button className="btn ghost sm" style={{ marginTop:12 }}
+                onClick={()=>{ onClose(); go('op-trader'); }}>◐ Visit the Trader</button>
+            )}
+          </div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            {owned.map(pair => (
+              <div key={pair.id}>
+                <div style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:7 }}>
+                  <span style={{ fontFamily:'Cinzel, serif', fontSize:17, color:pair.color }}>{pair.glyph}</span>
+                  <span style={{ fontFamily:'Cinzel, serif', fontSize:14, color:'var(--bone)',
+                    letterSpacing:'0.05em' }}>{pair.name} Set</span>
+                  <span style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12, fontStyle:'italic',
+                    color:'var(--bone-dim)' }}>· {pair.axis}</span>
+                  <span style={{ marginLeft:'auto', fontFamily:'JetBrains Mono, monospace', fontSize:9,
+                    color:pair.color, letterSpacing:'0.15em' }}>×{facetSetsHeld(run, pair.id)} IN HOLD</span>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  {facetsOfPair(pair).map(f => {
+                    const on = armed === f.id;
+                    return (
+                      <button key={f.id} onClick={()=>setArmed(on ? null : f.id)}
+                        style={{ padding:'11px 12px', textAlign:'left', cursor:'pointer', color:'var(--bone)',
+                          background: on ? f.color.replace(')',' / 0.16)') : 'var(--abyss-1)',
+                          border:`1px solid ${on ? f.color : 'var(--abyss-3)'}` }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <span style={{ fontFamily:'Cinzel, serif', fontSize:18, color:f.color }}>{f.glyph}</span>
+                          <span style={{ fontFamily:'Cinzel, serif', fontSize:13.5,
+                            color: on ? f.color : 'var(--bone)' }}>{f.name}</span>
+                          {on && <span style={{ marginLeft:'auto', fontSize:10, color:f.color }}>◆</span>}
+                        </div>
+                        <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:11.5, fontStyle:'italic',
+                          color:'var(--bone-dim)', marginTop:4 }}>{f.blurb}</div>
+                        <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12.5, color:'var(--bone)',
+                          marginTop:6, paddingTop:6, borderTop:'1px dashed var(--abyss-3)', lineHeight:1.45 }}>
+                          {f.desc(follower.evoTier)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8, marginTop:18 }}>
+          {armedFacet && (
+            <span style={{ marginRight:'auto', fontFamily:'JetBrains Mono, monospace', fontSize:9,
+              color:'var(--bone-dim)', letterSpacing:'0.12em' }}>
+              SPENDS 1 {facetPairById(armedFacet.pair).name.toUpperCase()} SET
+            </span>
+          )}
+          <button className="btn ghost sm" onClick={onClose}>Cancel</button>
+          <button className="btn sm" disabled={!armedFacet} onClick={()=>onGraft(armed)}
+            style={{ opacity: armedFacet ? 1 : 0.4, cursor: armedFacet ? 'pointer' : 'not-allowed',
+              border:`1px solid ${armedFacet ? armedFacet.color : 'var(--abyss-4)'}`,
+              color: armedFacet ? armedFacet.color : 'var(--bone-dim)' }}>
+            ◆ Graft {armedFacet ? armedFacet.name : '—'} for good
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

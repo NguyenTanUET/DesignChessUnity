@@ -35,7 +35,8 @@ const App = () => {
     const s = localStorage.getItem('gok.screen');
     if (s) setScreen(s);
     const r = localStorage.getItem('gok.run');
-    if (r) try { setRun(JSON.parse(r)); } catch(e){}
+    // Older runs filed lineups under retired widths — move them onto the current set.
+    if (r) try { setRun(window.migrateRunFormations(JSON.parse(r))); } catch(e){}
   }, []);
   useEffect(() => { localStorage.setItem('gok.screen', screen); }, [screen]);
   useEffect(() => { if (run) localStorage.setItem('gok.run', JSON.stringify(run)); }, [run]);

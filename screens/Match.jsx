@@ -798,7 +798,7 @@ const AllyPanel = ({ piece, square, status, moveCount, capCount, skillCount, ski
 const CommanderRail = ({ run, enemy }) => {
   const RELICS = window.OP_RELICS || [];
   // player relic = the carry relic on the lineup this assignment deployed
-  const lineup = ((run.lineups || {})[run.lineupWidth || 6] || [])
+  const lineup = ((run.lineups || {})[run.lineupWidth || DEFAULT_FORMATION_W] || [])
     .find(l => l.id === run.activeLineupId) || null;
   const myRelic = lineup?.carryRelicId ? RELICS.find(r => r.id === lineup.carryRelicId) : null;
   // enemy relic — deterministic from their id, so the same foe always bears it

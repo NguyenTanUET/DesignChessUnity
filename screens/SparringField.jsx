@@ -14,7 +14,7 @@
 
 const SparringField = ({ run, setRun, go }) => {
   const cfg    = run.trainingConfig || {};
-  const width  = cfg.width || 8;
+  const width  = cfg.width || DEFAULT_FORMATION_W;
   const height = width + 2;   // board is W wide × (W+2) tall
   const roster = run.roster || [];
   const pool   = (run.lineups || {})[width] || [];
@@ -117,7 +117,7 @@ const SparringField = ({ run, setRun, go }) => {
   const relicSide = relicPicker === 'A' ? sideA : relicPicker === 'B' ? sideB : null;
 
   // Board cell size — also used to width-match the relic bars to the board.
-  const cell = width <= 4 ? 64 : width <= 6 ? 54 : width <= 8 ? 46 : 38;
+  const cell = width <= 4 ? 64 : width <= 8 ? 46 : 34;
   const boardW = cell * width;
 
   return (

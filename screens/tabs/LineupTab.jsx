@@ -1,8 +1,8 @@
-// Tab 4 — Lineup: 4 formations (W4 / W6 / W8 / W10)
+// Tab 4 — Lineup: one tab per formation width (see FORMATIONS in opdata.js)
 // Each formation can hold MULTIPLE named lineups (variants).
 // Schema: run.lineups = { [width]: [{id, name, board:{[squareId]:instanceId}}, ...] }
 const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
-  const [width, setWidth] = React.useState(initialWidth || run.lineupWidth || 6);
+  const [width, setWidth] = React.useState(formationWidthUp(initialWidth || run.lineupWidth || DEFAULT_FORMATION_W));
   const roster = run.roster || [];
 
   const allLineups = run.lineups || {};
@@ -24,12 +24,7 @@ const LineupTab = ({ run, setRun, togglePool, initialWidth }) => {
 
   // Each formation has a square footprint (w × w) and is rendered at its own size.
   // Player places on the back 2 ranks only; remaining rows are hatched as out-of-bounds.
-  const formations = [
-    { w:4,  fullH:4,  label:'W4',  title:'Skirmish',  cap:8,  desc:'Tight 4×4 grid. Two ranks of 4 deploy.',     color:'oklch(0.7 0.12 35)' },
-    { w:6,  fullH:6,  label:'W6',  title:'Vanguard',  cap:12, desc:'Six-wide 6×6 grid. Two ranks of 6 deploy.',  color:'oklch(0.7 0.13 195)' },
-    { w:8,  fullH:8,  label:'W8',  title:'Standard',  cap:16, desc:'Classical 8×8 grid. Two ranks of 8 deploy.', color:'var(--brass)' },
-    { w:10, fullH:10, label:'W10', title:'Tide-Wall', cap:20, desc:'Wide 10×10 siege. Two ranks of 10 deploy.',  color:'oklch(0.65 0.15 290)' },
-  ];
+  const formations = FORMATIONS.map(f => ({ ...f, fullH: f.w, cap: f.w * 2 }));
   const active = formations.find(f => f.w === width);
 
   // === MUTATION HELPERS ===
@@ -629,7 +624,7 @@ const BoardGrid = ({ width, fullH, lineup, roster, onSetSquare, dragId, setDragI
   const rows = 2;                                      // back rank + front rank only
   const backRow  = 0;
   const frontRow = 1;
-  const cell = width <= 4 ? 72 : width <= 6 ? 60 : width <= 8 ? 50 : 42;
+  const cell = width <= 4 ? 72 : width <= 8 ? 50 : 40;
   const lookup = id => roster.find(f => f.instanceId === id);
 
   const handleDrop = (sqId, isPlaceable) => (e) => {

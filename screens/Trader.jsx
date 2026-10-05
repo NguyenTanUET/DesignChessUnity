@@ -1,6 +1,6 @@
-// Trader's Hold — 3 categories: Followers, Relics, Augmentations
+// Trader's Hold — 4 categories: Followers, Relics, Augmentations, Facets
 const Trader = ({ run, setRun, go }) => {
-  const [cat, setCat] = React.useState('followers'); // followers | relics | augmentations
+  const [cat, setCat] = React.useState('followers'); // followers | relics | augmentations | facets
   const [pending, setPending] = React.useState(null); // { cat, item } awaiting buy confirmation
 
   const res = run.res || {};
@@ -8,7 +8,8 @@ const Trader = ({ run, setRun, go }) => {
 
   // Item display name, for the confirmation prompt.
   const itemName = (c, item) =>
-    c === 'followers' ? FOLLOWER_ARCHETYPES[item.archetype]?.name : item.name;
+    c === 'followers' ? FOLLOWER_ARCHETYPES[item.archetype]?.name
+    : c === 'facets' ? `the ${item.name}` : item.name;
   const costLine = (cost) => Object.entries(cost || {})
     .map(([k,v]) => `${v} ${k}`).join(' · ');
 
@@ -25,10 +26,10 @@ const Trader = ({ run, setRun, go }) => {
     setRun(r => {
       const nextRes = { ...r.res };
       for (const k of Object.keys(item.cost)) nextRes[k] = (nextRes[k]||0) - item.cost[k];
-      const updates = {
-        res: nextRes,
-        traderPurchased: { ...(r.traderPurchased||{}), [item.id]: true },
-      };
+      // Facet sets restock forever — every other item is a one-off.
+      const updates = cat === 'facets'
+        ? { res: nextRes }
+        : { res: nextRes, traderPurchased: { ...(r.traderPurchased||{}), [item.id]: true } };
       if (cat === 'followers') {
         const nextIdc = (r.roster||[]).length + 1;
         updates.roster = [...(r.roster||[]), {
@@ -38,8 +39,7 @@ const Trader = ({ run, setRun, go }) => {
           evoTier: 0,
           augments: { optic:null, neural:null, blood:null, fin:null, chassis:null },
           classification: window.classificationFor(item.archetype), // fixed by species
-          facetPair: window.rollFacetPair(),                         // opposed pair rolled on purchase
-          facet: null,                                               // player commits to one side later
+          facet: null,                                               // grafted later from a facet set
           inPool: false,
         }];
       }
@@ -48,6 +48,10 @@ const Trader = ({ run, setRun, go }) => {
       }
       if (cat === 'augmentations') {
         updates.augInventory = [...(r.augInventory||[]), item.id];
+      }
+      if (cat === 'facets') {
+        const inv = r.facetInventory || {};
+        updates.facetInventory = { ...inv, [item.pairId]: (inv[item.pairId] || 0) + 1 };
       }
       return { ...r, ...updates };
     });
@@ -60,6 +64,9 @@ const Trader = ({ run, setRun, go }) => {
       color:'oklch(0.72 0.11 80)', desc:'Trinkets of the drowned noble houses.' },
     { id:'augmentations', label:'Augmentations', glyph:'⌘', subtitle:'Lumin Deposit',
       color:'oklch(0.75 0.13 195)', desc:'Grafts harvested from older, stranger prey.' },
+    { id:'facets',        label:'Facets',        glyph:'◐', subtitle:'DNA · restocks',
+      color:'oklch(0.72 0.14 150)',
+      desc:'Temperaments in pairs. Graft one side into a follower — it never comes out.' },
   ];
 
   const stock = TRADER_STOCK[cat] || [];
@@ -134,7 +141,8 @@ const Trader = ({ run, setRun, go }) => {
               <TraderCard key={item.id}
                 category={cat}
                 item={item}
-                purchased={!!purchased[item.id]}
+                purchased={cat !== 'facets' && !!purchased[item.id]}
+                held={cat === 'facets' ? facetSetsHeld(run, item.pairId) : 0}
                 affordable={canAfford(item.cost || {})}
                 res={res}
                 onBuy={()=>setPending({ cat, item })}
@@ -147,8 +155,12 @@ const Trader = ({ run, setRun, go }) => {
       {pending && (
         <ConfirmDialog
           title={`Acquire ${itemName(pending.cat, pending.item)}?`}
-          message={<>This will spend <b style={{ color:'var(--brass)' }}>{costLine(pending.item.cost)}</b>. All
-            sales are final — the trader does not take back what the deep has touched.</>}
+          message={pending.cat === 'facets'
+            ? <>This will spend <b style={{ color:'var(--brass)' }}>{costLine(pending.item.cost)}</b>. The set
+                waits in the hold until you graft one side into a follower from its Unit Info —
+                and a grafted facet can never be removed.</>
+            : <>This will spend <b style={{ color:'var(--brass)' }}>{costLine(pending.item.cost)}</b>. All
+                sales are final — the trader does not take back what the deep has touched.</>}
           confirmLabel="◎ Acquire"
           onConfirm={()=>buy(pending.cat, pending.item)}
           onClose={()=>setPending(null)}/>
@@ -157,7 +169,7 @@ const Trader = ({ run, setRun, go }) => {
   );
 };
 
-const TraderCard = ({ category, item, purchased, affordable, res, onBuy, accent }) => {
+const TraderCard = ({ category, item, purchased, held, affordable, res, onBuy, accent }) => {
   const has = (k, n) => (res?.[k]||0) >= n;
   let title, glyph, body, tierLabel;
   if (category === 'followers') {
@@ -188,6 +200,33 @@ const TraderCard = ({ category, item, purchased, affordable, res, onBuy, accent 
       </div>
     </>;
     tierLabel = `Tier ${item.tier}`;
+  } else if (category === 'facets') {
+    // One set = one opposed pair. Both sides shown; the side is chosen on grafting.
+    const pair = facetPairById(item.pairId);
+    title = item.name;
+    glyph = pair.glyph;
+    accent = pair.color;
+    body = <>
+      <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12.5, fontStyle:'italic',
+        color:'var(--bone-dim)', marginTop:6 }}>{pair.axis}</div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 14px 1fr', gap:6, marginTop:10, alignItems:'stretch' }}>
+        {facetsOfPair(pair).map((f, i) => (
+          <React.Fragment key={f.id}>
+            {i === 1 && <div style={{ display:'grid', placeItems:'center', color:'var(--brass-dim)',
+              fontFamily:'Cinzel, serif', fontSize:12 }}>×</div>}
+            <div style={{ padding:'7px 8px', background:'var(--abyss-0)', border:'1px solid var(--abyss-3)' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <span style={{ fontFamily:'Cinzel, serif', fontSize:15, color:f.color }}>{f.glyph}</span>
+                <span style={{ fontFamily:'Cinzel, serif', fontSize:12, color:'var(--bone)' }}>{f.name}</span>
+              </div>
+              <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:11, fontStyle:'italic',
+                color:'var(--bone-dim)', marginTop:3, lineHeight:1.35 }}>{f.blurb}</div>
+            </div>
+          </React.Fragment>
+        ))}
+      </div>
+    </>;
+    tierLabel = held > 0 ? `Facet set · ${held} in hold` : 'Facet set';
   } else {
     const slot = AUG_SLOTS.find(s => s.id === item.slot);
     title = item.name;

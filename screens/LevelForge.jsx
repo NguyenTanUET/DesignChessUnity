@@ -8,7 +8,10 @@
 // can also fire on plain objective completion or a custom-written condition.
 //
 // Persists to localStorage('gok.customLevels'), independent of any run. Schema:
-//   level = { id, name, stages:[stage] }            (stages[0] = entry)
+//   level = { id, name, next:[levelId], stages:[stage] }   (stages[0] = entry)
+// `next` chains levels into a campaign. A level that leads to two or more
+// others is a fork: the levels it leads to become DECISION assignments, and
+// undertaking one forsakes its siblings.
 //   stage = { id, label, w, h, blocked:[], deploy:[], maxZone:[], objCells:[],
 //             enemies:{cell:archetypeKey}, terrain:{cell:terrainId},
 //             objective:objectiveId, turns,
@@ -83,6 +86,7 @@ const forgeEmptyRewards = () => ({ coral:0, dna:0, lumin:0, relics:[], augs:[], 
 // Best-effort migration for levels saved by earlier Forge versions.
 const forgeMigrate = (levels) => (levels || []).map(lvl => ({
   ...lvl,
+  next: Array.isArray(lvl.next) ? lvl.next : [],
   stages: (lvl.stages || []).map(s => {
     const objMap = { reach:'advance', regicide:'leader', annihilate:'exterminate', survive:'seize' };
     const legacyPiece = { P:'larva', N:'outrider', B:'prelate', R:'colossus', Q:'matriarch', K:'witch' };
@@ -109,6 +113,94 @@ const forgeMarkLetter = (stage, key) => {
 
 const forgeRouteBadge = (stage, rt) =>
   rt.when === 'complete' ? '✓' : rt.when === 'custom' ? '✎' : forgeMarkLetter(stage, rt.when);
+
+// =============================================================================
+// CAMPAIGN — levels chained by `next`. Shared with the Command Chamber, which
+// lists these levels as assignments.
+// =============================================================================
+
+// Can `from` reach `to` by following links? Used to refuse links that loop.
+const forgeReaches = (levels, from, to) => {
+  const byId = Object.fromEntries(levels.map(l => [l.id, l]));
+  const seen = new Set();
+  const stack = [from];
+  while (stack.length) {
+    const id = stack.pop();
+    if (id === to) return true;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    (byId[id]?.next || []).forEach(n => stack.push(n));
+  }
+  return false;
+};
+
+// Derive the campaign graph:
+//   { [levelId]: { prev, next, depth, decision, locksOut, forkFrom } }
+// A level reached from a fork (a level with 2+ links) is a decision; it locks
+// out every other level that same fork leads to.
+const forgeCampaign = (levels) => {
+  const ids = new Set(levels.map(l => l.id));
+  const node = {};
+  levels.forEach(l => {
+    node[l.id] = { prev:[], next:(l.next || []).filter(id => ids.has(id) && id !== l.id),
+      depth:0, decision:false, locksOut:[], forkFrom:[] };
+  });
+  levels.forEach(l => node[l.id].next.forEach(t => node[t].prev.push(l.id)));
+
+  // Forks: each sibling forsakes the rest.
+  levels.forEach(l => {
+    const kids = node[l.id].next;
+    if (kids.length < 2) return;
+    kids.forEach(k => {
+      node[k].decision = true;
+      node[k].forkFrom.push(l.id);
+      kids.forEach(o => { if (o !== k && !node[k].locksOut.includes(o)) node[k].locksOut.push(o); });
+    });
+  });
+
+  // Depth = longest path from any opening level, so a merge sits after both arms.
+  const order = [];
+  const indeg = Object.fromEntries(levels.map(l => [l.id, node[l.id].prev.length]));
+  const queue = levels.filter(l => indeg[l.id] === 0).map(l => l.id);
+  while (queue.length) {
+    const id = queue.shift();
+    order.push(id);
+    node[id].next.forEach(t => {
+      node[t].depth = Math.max(node[t].depth, node[id].depth + 1);
+      if (--indeg[t] === 0) queue.push(t);
+    });
+  }
+  return node;
+};
+
+// A level dressed as an assignment, so the Command Chamber can list it beside
+// the authored ones. `cnode` is that level's entry from forgeCampaign().
+const forgeLevelAsAssignment = (level, cnode) => {
+  const stages = level.stages || [];
+  const entry = stages[0] || {};
+  const obj = FORGE_OBJECTIVES.find(o => o.id === entry.objective) || FORGE_OBJECTIVES[0];
+  const sum = (k) => stages.reduce((n, st) => n + (st.rewards?.[k] || 0), 0);
+  const relic = stages.flatMap(st => st.rewards?.relics || [])[0] || null;
+  let h = 0;
+  for (let i = 0; i < level.id.length; i++) h = (h * 31 + level.id.charCodeAt(i)) >>> 0;
+  const hue = [190, 270, 25, 150, 75, 300, 220][h % 7];
+  return {
+    id: level.id, kind:'campaign', name: level.name,
+    type: obj.name.toUpperCase(),
+    location: `${stages.length} stage${stages.length === 1 ? '' : 's'} · entry board ${entry.w || 8}×${entry.h || 8}`,
+    weather: level.weather || 'Uncharted water — authored at the Cartographer\u2019s Table.',
+    description: level.description || `${obj.desc} An authored tide of ${stages.length} stage${stages.length === 1 ? '' : 's'}.`,
+    overseer: null,
+    rewards: { coral: sum('coral'), dna: sum('dna'), lumin: sum('lumin'), relic },
+    palette: { top:`oklch(0.24 0.06 ${hue})`, bottom:`oklch(0.09 0.025 ${hue})`, accent:`oklch(0.72 0.14 ${hue})` },
+    map: 0,
+    width: formationFitting(entry.w || 8),
+    depth: cnode?.depth || 0,
+    prev: cnode?.prev || [],
+    decision: !!cnode?.decision,
+    locksOut: cnode?.locksOut || [],
+  };
+};
 
 const LevelForge = ({ go }) => {
   const [levels, setLevels] = React.useState(() => {
@@ -141,6 +233,7 @@ const LevelForge = ({ go }) => {
     const lvl = {
       id:`lvl-${Math.random().toString(36).slice(2,8)}`,
       name:`Tide ${levels.length + 1}`,
+      next:[],
       stages:[forgeDefaultStage('1a')],
     };
     setLevels(ls => [...ls, lvl]);
@@ -150,8 +243,11 @@ const LevelForge = ({ go }) => {
   const updateLevel = (id, mutator) =>
     setLevels(ls => ls.map(l => l.id === id ? { ...l, ...mutator(l) } : l));
 
+  // Deleting a level also cuts every link that pointed at it.
   const deleteLevel = (id) => {
-    setLevels(ls => ls.filter(l => l.id !== id));
+    setLevels(ls => ls
+      .filter(l => l.id !== id)
+      .map(l => (l.next || []).includes(id) ? { ...l, next: l.next.filter(x => x !== id) } : l));
     if (openId === id) setOpenId(null);
   };
 
@@ -185,7 +281,7 @@ const LevelForge = ({ go }) => {
       </div>
 
       {open
-        ? <ForgeEditor key={open.id} level={open}
+        ? <ForgeEditor key={open.id} level={open} levels={levels}
             onChange={(mut)=>updateLevel(open.id, mut)}
             onDelete={()=>deleteLevel(open.id)}/>
         : <ForgeLevelList levels={levels} onOpen={setOpenId} onNew={newLevel} onDelete={deleteLevel}/>}
@@ -197,6 +293,8 @@ const LevelForge = ({ go }) => {
 // LEVEL LIST
 // =============================================================================
 const ForgeLevelList = ({ levels, onOpen, onNew, onDelete }) => {
+  const campaign = React.useMemo(() => forgeCampaign(levels), [levels]);
+  const nameOf = (id) => levels.find(l => l.id === id)?.name || '?';
   const flowSummary = (lvl) => {
     const edges = [];
     lvl.stages.forEach(s => s.routes.forEach(rt => {
@@ -221,6 +319,8 @@ const ForgeLevelList = ({ levels, onOpen, onNew, onDelete }) => {
         </div>
       </div>
 
+      <ForgeCampaignGraph levels={levels} campaign={campaign} onOpen={onOpen}/>
+
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:14, maxWidth:1100 }}>
         {levels.map(lvl => (
           <div key={lvl.id} className="panel ornate hoverable" style={{ padding:'18px 18px', cursor:'pointer' }}
@@ -237,6 +337,15 @@ const ForgeLevelList = ({ levels, onOpen, onNew, onDelete }) => {
             <div style={{ marginTop:8, fontFamily:'JetBrains Mono, monospace', fontSize:9.5,
               color:'var(--bio-dim)', letterSpacing:'0.12em' }}>
               {flowSummary(lvl)}
+            </div>
+            <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:9,
+              letterSpacing:'0.12em', color:'var(--bone-dim)', display:'flex', gap:8, flexWrap:'wrap' }}>
+              {campaign[lvl.id]?.next.length
+                ? <span>→ {campaign[lvl.id].next.map(nameOf).join(' · ')}</span>
+                : <span style={{ opacity:0.6 }}>→ campaign ends here</span>}
+              {campaign[lvl.id]?.decision && (
+                <span style={{ color:'var(--coral)' }}>◣ DECISION</span>
+              )}
             </div>
             <div style={{ display:'flex', gap:6, marginTop:14 }}>
               <button className="btn ghost sm" onClick={(e)=>{ e.stopPropagation(); onOpen(lvl.id); }}>✎ Edit</button>
@@ -260,7 +369,7 @@ const ForgeLevelList = ({ levels, onOpen, onNew, onDelete }) => {
 // =============================================================================
 // EDITOR — left: flow + stages · center: painter · right: stage settings
 // =============================================================================
-const ForgeEditor = ({ level, onChange, onDelete }) => {
+const ForgeEditor = ({ level, levels, onChange, onDelete }) => {
   const stages = level.stages;
   const [selId, setSelId] = React.useState(stages[0]?.id || null);
   const [tool, setTool] = React.useState('blocked');
@@ -307,6 +416,8 @@ const ForgeEditor = ({ level, onChange, onDelete }) => {
               border:'1px solid var(--abyss-4)', color:'var(--bone)',
               fontFamily:'Cinzel, serif', fontSize:14, letterSpacing:'0.04em', outline:'none' }}/>
         </div>
+
+        <ForgeLinkPanel level={level} levels={levels} onChange={onChange}/>
 
         <div>
           <div className="caps" style={{ marginBottom:6 }}>Stage Flow</div>
@@ -397,6 +508,165 @@ const ForgeEditor = ({ level, onChange, onDelete }) => {
       {stage && (
         <ForgeStageSettings key={stage.id} stage={stage} stages={stages}
           onEdit={(mut)=>updateStage(stage.id, mut)}/>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// LINK PANEL — which levels this one leads to. Two or more links make a fork.
+// =============================================================================
+const ForgeLinkPanel = ({ level, levels, onChange }) => {
+  const campaign = React.useMemo(() => forgeCampaign(levels), [levels]);
+  const me = campaign[level.id] || { next:[], prev:[] };
+  const nameOf = (id) => levels.find(l => l.id === id)?.name || '?';
+
+  const link = (id) => id && onChange(l => ({ next: [...(l.next || []), id] }));
+  const unlink = (id) => onChange(l => ({ next: (l.next || []).filter(x => x !== id) }));
+
+  // Everything not already linked; a level that can already reach this one
+  // would close a loop, so it is offered but disabled.
+  const options = levels
+    .filter(l => l.id !== level.id && !me.next.includes(l.id))
+    .map(l => ({ id:l.id, name:l.name, loops: forgeReaches(levels, l.id, level.id) }));
+
+  const inp = { width:'100%', padding:'7px 10px', background:'var(--abyss-0)',
+    border:'1px solid var(--abyss-4)', color:'var(--bone)',
+    fontFamily:'JetBrains Mono, monospace', fontSize:11, outline:'none' };
+
+  return (
+    <div>
+      <div className="caps" style={{ marginBottom:6 }}>Leads To</div>
+      <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:6 }}>
+        {me.next.map(id => (
+          <div key={id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 9px',
+            background:'var(--abyss-1)',
+            border:`1px solid ${me.next.length > 1 ? 'oklch(0.55 0.13 25 / 0.6)' : 'var(--abyss-3)'}` }}>
+            <span style={{ color: me.next.length > 1 ? 'var(--coral)' : 'var(--brass)',
+              fontFamily:'Cinzel, serif', fontSize:13 }}>{me.next.length > 1 ? '◣' : '→'}</span>
+            <span style={{ flex:1, fontFamily:'Cinzel, serif', fontSize:12.5, color:'var(--bone)',
+              whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{nameOf(id)}</span>
+            <button onClick={()=>unlink(id)} title="Remove link"
+              style={{ background:'transparent', border:'none', color:'var(--bone-dim)', cursor:'pointer',
+                fontFamily:'JetBrains Mono, monospace', fontSize:12, padding:'0 2px' }}>×</button>
+          </div>
+        ))}
+      </div>
+
+      {options.length > 0 ? (
+        <select value="" title="Link a level" onChange={e=>link(e.target.value)} style={inp}>
+          <option value="">+ Link a level…</option>
+          {options.map(o => (
+            <option key={o.id} value={o.id} disabled={o.loops}>
+              {o.name}{o.loops ? '  — would loop back' : ''}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
+          letterSpacing:'0.12em' }}>
+          ‣ {levels.length < 2 ? 'CREATE ANOTHER LEVEL TO LINK TO' : 'LINKED TO EVERY OTHER LEVEL'}
+        </div>
+      )}
+
+      {me.next.length > 1 && (
+        <div style={{ marginTop:8, padding:'8px 10px', background:'oklch(0.18 0.05 25 / 0.35)',
+          border:'1px solid oklch(0.45 0.12 25 / 0.5)' }}>
+          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--coral)',
+            letterSpacing:'0.2em' }}>◣ FORK · DECISION</div>
+          <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12, fontStyle:'italic',
+            color:'var(--bone-dim)', marginTop:3, lineHeight:1.45 }}>
+            {me.next.map(nameOf).join(' and ')} become decision assignments.
+            Undertaking one forsakes the other{me.next.length > 2 ? 's' : ''}.
+          </div>
+        </div>
+      )}
+
+      {me.prev.length > 0 && (
+        <div style={{ marginTop:8, fontFamily:'JetBrains Mono, monospace', fontSize:8.5,
+          color:'var(--bone-dim)', letterSpacing:'0.12em' }}>
+          ← REACHED FROM {me.prev.map(nameOf).join(' · ').toUpperCase()}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// CAMPAIGN GRAPH — every level, tiered by depth; fork edges drawn in coral
+// =============================================================================
+const ForgeCampaignGraph = ({ levels, campaign, onOpen }) => {
+  if (levels.length === 0) return null;
+  const linked = levels.some(l => (campaign[l.id]?.next || []).length > 0);
+
+  const tiers = {};
+  levels.forEach(l => { const d = campaign[l.id]?.depth || 0; (tiers[d] = tiers[d] || []).push(l); });
+  const tierKeys = Object.keys(tiers).map(Number).sort((a, b) => a - b);
+  const maxRows = Math.max(...tierKeys.map(t => tiers[t].length));
+
+  const NW = 132, NH = 34, colW = 190, rowH = 52;
+  const W = Math.max(760, tierKeys.length * colW + 40);
+  const H = maxRows * rowH + 30;
+  const pos = {};
+  tierKeys.forEach((t, ti) => tiers[t].forEach((l, i) => {
+    pos[l.id] = { x: 20 + ti * colW + (colW - NW) / 2,
+                  y: 15 + i * rowH + (maxRows - tiers[t].length) * rowH / 2 };
+  }));
+
+  return (
+    <div style={{ maxWidth:1100, marginBottom:22 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8 }}>
+        <div className="caps">Campaign</div>
+        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
+          letterSpacing:'0.18em' }}>
+          → LINK · <span style={{ color:'var(--coral)' }}>◣ FORK = DECISION</span> · CLICK A TIDE TO EDIT
+        </div>
+      </div>
+      <div style={{ overflowX:'auto', background:'var(--abyss-0)', border:'1px solid var(--abyss-3)' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width:W, height:H, display:'block' }}>
+          {levels.map(l => (campaign[l.id]?.next || []).map(t => {
+            const a = pos[l.id], b = pos[t];
+            if (!a || !b) return null;
+            const fork = campaign[l.id].next.length > 1;
+            const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
+            const mx = (x1 + x2) / 2;
+            return (
+              <g key={`${l.id}-${t}`}>
+                <path d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2 - 6} ${y2}`} fill="none"
+                  stroke={fork ? 'var(--coral)' : 'var(--brass-dim)'} strokeWidth="1.2"
+                  strokeDasharray={fork ? '4 3' : 'none'} opacity="0.85"/>
+                <path d={`M ${x2 - 7} ${y2 - 4} L ${x2} ${y2} L ${x2 - 7} ${y2 + 4} Z`}
+                  fill={fork ? 'var(--coral)' : 'var(--brass-dim)'}/>
+              </g>
+            );
+          }))}
+          {levels.map(l => {
+            const p = pos[l.id];
+            const c = campaign[l.id] || {};
+            return (
+              <g key={l.id} transform={`translate(${p.x} ${p.y})`} style={{ cursor:'pointer' }}
+                onClick={()=>onOpen(l.id)}>
+                <rect width={NW} height={NH} fill="var(--abyss-2)"
+                  stroke={c.decision ? 'var(--coral)' : c.prev?.length ? 'var(--abyss-4)' : 'var(--bio-dim)'}
+                  strokeWidth="1.2"/>
+                <text x={NW / 2} y={NH / 2 + 4} textAnchor="middle" fontFamily="Cinzel, serif"
+                  fontSize="12" fill="var(--bone)">
+                  {l.name.length > 16 ? l.name.slice(0, 15) + '…' : l.name}
+                </text>
+                {c.decision && <text x={NW - 6} y="10" textAnchor="end" fontFamily="JetBrains Mono, monospace"
+                  fontSize="7" fill="var(--coral)" letterSpacing="0.15em">◣ DECISION</text>}
+                {!c.prev?.length && <text x="6" y="10" fontFamily="JetBrains Mono, monospace"
+                  fontSize="7" fill="var(--bio-dim)" letterSpacing="0.15em">OPENING</text>}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      {!linked && levels.length > 1 && (
+        <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:8.5,
+          color:'var(--bone-dim)', letterSpacing:'0.12em' }}>
+          ‣ NOTHING LINKED YET — OPEN A LEVEL AND USE “LEADS TO” TO CHAIN THE CAMPAIGN
+        </div>
       )}
     </div>
   );
@@ -1282,3 +1552,5 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
 };
 
 window.LevelForge = LevelForge;
+window.forgeCampaign = forgeCampaign;
+window.forgeLevelAsAssignment = forgeLevelAsAssignment;

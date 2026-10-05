@@ -405,6 +405,53 @@ const OVERSEERS = {
   },
 };
 
+// ------------------ FORMATIONS ------------------
+// The lineup widths the game offers. Every screen that lets the player pick a
+// width reads this list — change it here and nowhere else.
+const FORMATIONS = [
+  { w:4,  label:'W4',  title:'Skirmish',  color:'oklch(0.7 0.12 35)',
+    desc:'Tight 4-wide line. Two ranks of 4 deploy.' },
+  { w:8,  label:'W8',  title:'Standard',  color:'var(--brass)',
+    desc:'Classical 8-wide line. Two ranks of 8 deploy.' },
+  { w:12, label:'W12', title:'Tide-Wall', color:'oklch(0.65 0.15 290)',
+    desc:'Wide 12-wide siege. Two ranks of 12 deploy.' },
+];
+const FORMATION_WIDTHS = FORMATIONS.map(f => f.w);
+const DEFAULT_FORMATION_W = 8;
+const formationByW = (w) => FORMATIONS.find(f => f.w === w) || null;
+
+// Snap a width UP to the nearest formation, so nothing placed falls off the
+// edge (old W6 → W8, old W10 → W12).
+const formationWidthUp = (w) =>
+  FORMATION_WIDTHS.find(x => x >= (Number(w) || 0)) || FORMATION_WIDTHS[FORMATION_WIDTHS.length - 1];
+
+// The widest formation that still fits on a board `bw` squares wide.
+const formationFitting = (bw) =>
+  [...FORMATION_WIDTHS].reverse().find(x => x <= (Number(bw) || 0)) || FORMATION_WIDTHS[0];
+
+// Bring a saved run onto the current formation widths. Lineups filed under a
+// retired width move up into the next formation, keeping every piece where it
+// stood; the run's remembered widths snap the same way.
+const migrateRunFormations = (run) => {
+  if (!run) return run;
+  const src = run.lineups || {};
+  const lineups = Object.fromEntries(FORMATION_WIDTHS.map(w => [w, []]));
+  Object.keys(src).forEach(k => {
+    const w = formationWidthUp(k);
+    lineups[w] = [...lineups[w], ...(src[k] || [])];
+  });
+  const snap = (w) => (w == null ? w : formationWidthUp(w));
+  return {
+    ...run,
+    lineups,
+    lineupWidth: snap(run.lineupWidth) || DEFAULT_FORMATION_W,
+    trainingConfig: run.trainingConfig
+      ? { ...run.trainingConfig, width: snap(run.trainingConfig.width) } : run.trainingConfig,
+    pvpSession: run.pvpSession
+      ? { ...run.pvpSession, lineupW: snap(run.pvpSession.lineupW) } : run.pvpSession,
+  };
+};
+
 // ------------------ ASSIGNMENTS (mission briefs) ------------------
 // Each has: id, kind(main/side), name, type(objective), location, weather, description,
 // overseer, rewards, decision? (if main & locks out alternatives), locksOut?: [ids], palette
@@ -418,7 +465,7 @@ const OP_ASSIGNMENTS = [
     rewards:{coral:60, dna:30, lumin:10, relic:null},
     palette:{top:'oklch(0.24 0.06 190)', bottom:'oklch(0.09 0.025 210)', accent:'oklch(0.72 0.14 195)'},
     map: 0,
-    width: 6,
+    width: 8,
   },
   {
     id:'as-eel-hymn', kind:'main', name:'The Eel-Hymn Gallery',
@@ -444,7 +491,7 @@ const OP_ASSIGNMENTS = [
     rewards:{coral:140, dna:55, lumin:45, relic:'r-crown'},
     palette:{top:'oklch(0.24 0.1 30)', bottom:'oklch(0.1 0.04 25)', accent:'oklch(0.68 0.15 25)'},
     map: 1,
-    width: 10,
+    width: 12,
   },
   {
     id:'as-harvest-vein', kind:'side', name:'Coral-Vein Harvest',
@@ -466,7 +513,7 @@ const OP_ASSIGNMENTS = [
     rewards:{coral:50, dna:45, lumin:55, relic:'r-shell'},
     palette:{top:'oklch(0.26 0.06 210)', bottom:'oklch(0.09 0.02 215)', accent:'oklch(0.75 0.1 200)'},
     map: 0,
-    width: 6,
+    width: 8,
   },
 ];
 
@@ -561,11 +608,17 @@ const FACETS = [
     desc:(t)=>`Moving 2+ squares grants +${10 + t*5}% accuracy on its next capture.` },
 ];
 
+// A pair is sold as ONE item — its set emblem below. Whoever grafts it picks
+// a side; that side is the follower's facet for good.
 const FACET_PAIRS = [
-  { id:'regard',   name:'Regard',   axis:'Scorn the lesser, or the greater',  a:'contempt',    b:'resentment' },
-  { id:'dominion', name:'Dominion', axis:'Bend others, or shrug off the bend', a:'manipulator', b:'fool' },
-  { id:'appetite', name:'Appetite', axis:'Keep the spoil, or give it away',   a:'hoarder',     b:'spender' },
-  { id:'vigil',    name:'Vigil',    axis:'Hold the square, or never rest',    a:'sentinel',    b:'rover' },
+  { id:'regard',   name:'Regard',   glyph:'⚖', color:'oklch(0.67 0.14 32)',
+    axis:'Scorn the lesser, or the greater',  a:'contempt',    b:'resentment' },
+  { id:'dominion', name:'Dominion', glyph:'☍', color:'oklch(0.68 0.12 300)',
+    axis:'Bend others, or shrug off the bend', a:'manipulator', b:'fool' },
+  { id:'appetite', name:'Appetite', glyph:'❖', color:'oklch(0.72 0.12 110)',
+    axis:'Keep the spoil, or give it away',   a:'hoarder',     b:'spender' },
+  { id:'vigil',    name:'Vigil',    glyph:'⧖', color:'oklch(0.70 0.10 205)',
+    axis:'Hold the square, or never rest',    a:'sentinel',    b:'rover' },
 ];
 
 const facetById     = (id) => FACETS.find(f => f.id === id) || null;
@@ -573,19 +626,20 @@ const facetPairById = (id) => FACET_PAIRS.find(p => p.id === id) || null;
 const facetsOfPair  = (pair) => pair ? [facetById(pair.a), facetById(pair.b)].filter(Boolean) : [];
 const rollFacetPair = () => FACET_PAIRS[Math.floor(Math.random() * FACET_PAIRS.length)].id;
 
-// Which pair a specimen was born under. Falls back to the pair of an already
-// chosen facet, then to a stable hash of the instanceId, so followers saved
-// before pairs existed still resolve to the same pair every time.
+// The pair a follower's facet belongs to — null until one is grafted.
+// Followers are born without a facet; it comes only from a facet set bought
+// at the Trader, and once grafted it never comes out.
 const resolveFacetPair = (follower) => {
-  if (!follower) return null;
-  if (follower.facetPair) return facetPairById(follower.facetPair);
-  const chosen = follower.facet ? facetById(follower.facet) : null;
-  if (chosen) return facetPairById(chosen.pair);
-  const seed = String(follower.instanceId || '');
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return FACET_PAIRS[h % FACET_PAIRS.length];
+  const chosen = follower?.facet ? facetById(follower.facet) : null;
+  return chosen ? facetPairById(chosen.pair) : null;
 };
+
+// Facet sets on the Trader's shelf — one item per pair, bought as often as
+// the player likes. Owned sets stack in run.facetInventory = { [pairId]: n }.
+TRADER_STOCK.facets = FACET_PAIRS.map(p => ({
+  id:`t-facet-${p.id}`, pairId:p.id, name:`${p.name} Set`, cost:{ dna:30 },
+}));
+const facetSetsHeld = (run, pairId) => (run?.facetInventory || {})[pairId] || 0;
 
 // ------------------ STARTING FOLLOWERS (per class roster) ------------------
 function buildStartingRoster(cls) {
@@ -608,8 +662,7 @@ function buildStartingRoster(cls) {
       augSlotCount: slotCount,
       augments: { optic:null, neural:null, blood:null, fin:null, chassis:null },
       classification: classificationFor(archetype), // species — fixed before purchase
-      facetPair: rollFacetPair(),                   // opposed pair rolled per instance
-      facet: null,                                  // the side the player commits to
+      facet: null,                                  // grafted later from a bought facet set
       inPool: false, // deployment pool
     });
   }
@@ -631,8 +684,10 @@ Object.assign(window, {
   buildStartingRoster, generateFollowerName,
   CLASSIFICATIONS, FACETS, FACET_PAIRS, classificationById, classValueAt,
   classificationFor, facetById, facetPairById, facetsOfPair,
-  rollFacetPair, resolveFacetPair,
+  rollFacetPair, resolveFacetPair, facetSetsHeld,
   QUEST_ITEMS,
+  FORMATIONS, FORMATION_WIDTHS, DEFAULT_FORMATION_W, formationByW,
+  formationWidthUp, formationFitting, migrateRunFormations,
   RELIC_CLASSES, RELIC_UPGRADES, relicClassById, relicRequirement,
   relicProgressOf, relicClimb, relicEffectAt,
 });

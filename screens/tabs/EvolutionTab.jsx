@@ -132,25 +132,19 @@ const EvolutionTab = ({ run, setRun, selId }) => {
                 </div>
               )}
             </>
-          ) : (() => {
-            const pair = resolveFacetPair(sel);
-            return (
-              <div style={{ textAlign:'center', padding:'14px 8px' }}>
-                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.25em',
-                  color:'var(--bone-dim)', textTransform:'uppercase' }}>
-                  Facet · {pair ? pair.name : 'Temperament'} · uncommitted
-                </div>
-                <div style={{ fontFamily:'Cinzel, serif', fontSize:15, color:'var(--bone)',
-                  letterSpacing:'0.04em', marginTop:6 }}>
-                  {facetsOfPair(pair).map(f => f.name).join('  ×  ') || '—'}
-                </div>
-                <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12.5, color:'var(--bone-dim)',
-                  fontStyle:'italic', marginTop:6, lineHeight:1.5 }}>
-                  Two natures pull at this one. Commit it to a side in Unit Info.
-                </div>
+          ) : (
+            <div style={{ textAlign:'center', padding:'14px 8px' }}>
+              <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.25em',
+                color:'var(--bone-dim)', textTransform:'uppercase' }}>
+                Facet · none grafted
               </div>
-            );
-          })()}
+              <div style={{ fontFamily:'Cinzel, serif', fontSize:22, color:'var(--brass-dim)', marginTop:6 }}>∅</div>
+              <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12.5, color:'var(--bone-dim)',
+                fontStyle:'italic', marginTop:6, lineHeight:1.5 }}>
+                Buy a facet set from the Trader, then graft one side in Unit Info.
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

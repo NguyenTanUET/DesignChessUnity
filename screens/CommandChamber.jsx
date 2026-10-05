@@ -96,19 +96,39 @@ const AssignmentPanel = ({ run, setRun, go }) => {
   const MAIN = OP_ASSIGNMENTS.filter(a => a.kind === 'main');
   const SIDE = OP_ASSIGNMENTS.filter(a => a.kind === 'side');
 
-  const [picked, setPicked] = React.useState(run.pickedAssignmentId || MAIN[0].id);
-  const assignment = OP_ASSIGNMENTS.find(a => a.id === picked);
+  // Levels chained in the Level Editor, listed as assignments. A fork there
+  // (one level leading to two or more) makes its branches decision assignments.
+  const CAMPAIGN = React.useMemo(() => {
+    let levels = [];
+    try { levels = JSON.parse(localStorage.getItem('gok.customLevels')) || []; } catch(e) {}
+    if (!window.forgeCampaign || !window.forgeLevelAsAssignment) return [];
+    const graph = window.forgeCampaign(levels);
+    const nameOf = (id) => levels.find(l => l.id === id)?.name || '?';
+    return levels
+      .map(l => ({ ...window.forgeLevelAsAssignment(l, graph[l.id]),
+                   after: (graph[l.id]?.prev || []).map(nameOf) }))
+      .sort((a, b) => a.depth - b.depth);
+  }, []);
+  const ALL = [...OP_ASSIGNMENTS, ...CAMPAIGN];
+
+  const [picked, setPicked] = React.useState(() =>
+    ALL.some(a => a.id === run.pickedAssignmentId) ? run.pickedAssignmentId : MAIN[0].id);
+  const assignment = ALL.find(a => a.id === picked) || MAIN[0];
+
+  // A decision taken closes its sibling paths for the rest of the run.
+  const forsaken = run.forsakenAssignments || [];
+  const isForsaken = forsaken.includes(assignment.id);
+  const [confirmDecision, setConfirmDecision] = React.useState(false);
+
+  // Briefing HUD — the overseer speaks the moment a mission is chosen.
+  const [briefingOpen, setBriefingOpen] = React.useState(false);
+  const pickAssignment = (id) => { setPicked(id); setBriefingOpen(true); };
 
   const roster = run.roster || [];
   const allLineups = run.lineups || {};
-  const requiredWidth = assignment.width || 6;
+  const requiredWidth = assignment.width || DEFAULT_FORMATION_W;
 
-  const formations = [
-    { w:4,  label:'W4',  title:'Skirmish',  cap:6,  color:'oklch(0.7 0.12 35)' },
-    { w:6,  label:'W6',  title:'Vanguard',  cap:10, color:'oklch(0.7 0.13 195)' },
-    { w:8,  label:'W8',  title:'Phalanx',   cap:14, color:'oklch(0.72 0.12 75)' },
-    { w:10, label:'W10', title:'Tide-Wall', cap:18, color:'oklch(0.65 0.15 290)' },
-  ];
+  const formations = FORMATIONS;
 
   const eligibleLineups = (allLineups[requiredWidth] || []).filter(ln =>
     Object.keys(ln.board || {}).length > 0
@@ -130,14 +150,25 @@ const AssignmentPanel = ({ run, setRun, go }) => {
   const selectedBoard = selectedLineup?.board || {};
   const selectedDeployedCount = Object.values(selectedBoard).filter(Boolean).length;
 
-  const overseer = OVERSEERS[assignment.overseer];
-  const canDeploy = !!selectedLineup && selectedDeployedCount > 0;
+  const canDeploy = !!selectedLineup && selectedDeployedCount > 0 && !isForsaken;
+
+  // Paths this undertaking would close that are still open.
+  const closing = assignment.decision
+    ? (assignment.locksOut || []).filter(id => !forsaken.includes(id)) : [];
+
+  // A decision is permanent, so it asks first.
+  const requestUndertake = () => {
+    if (!canDeploy) return;
+    if (closing.length) setConfirmDecision(true);
+    else undertake();
+  };
 
   const undertake = () => {
     if (!canDeploy) return;
     const placedIds = new Set(Object.values(selectedBoard));
     setRun(r => ({
       ...r,
+      forsakenAssignments: [...new Set([...(r.forsakenAssignments || []), ...closing])],
       pickedAssignmentId: assignment.id,
       deployedAssignmentId: assignment.id,
       assignmentIdx: assignment.map || 0,
@@ -171,14 +202,30 @@ const AssignmentPanel = ({ run, setRun, go }) => {
         <div className="caps" style={{ marginBottom:10 }}>Main Assignments</div>
         <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
           {MAIN.map(a => (
-            <AssignmentPick key={a.id} assignment={a} active={picked===a.id} onClick={()=>setPicked(a.id)}/>
+            <AssignmentPick key={a.id} assignment={a} active={picked===a.id}
+              forsaken={forsaken.includes(a.id)} onClick={()=>pickAssignment(a.id)}/>
+          ))}
+        </div>
+
+        <div className="caps" style={{ marginBottom:10 }}>Campaign</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
+          {CAMPAIGN.length === 0 && (
+            <div style={{ padding:'12px', border:'1px dashed var(--abyss-4)', textAlign:'center',
+              fontFamily:'Cormorant Garamond, serif', fontSize:12.5, fontStyle:'italic', color:'var(--bone-dim)' }}>
+              No tides charted yet — build and link them in the Level Editor.
+            </div>
+          )}
+          {CAMPAIGN.map(a => (
+            <AssignmentPick key={a.id} assignment={a} active={picked===a.id}
+              forsaken={forsaken.includes(a.id)} onClick={()=>pickAssignment(a.id)}/>
           ))}
         </div>
 
         <div className="caps" style={{ marginBottom:10 }}>Side Assignments</div>
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
           {SIDE.map(a => (
-            <AssignmentPick key={a.id} assignment={a} active={picked===a.id} onClick={()=>setPicked(a.id)}/>
+            <AssignmentPick key={a.id} assignment={a} active={picked===a.id}
+              forsaken={forsaken.includes(a.id)} onClick={()=>pickAssignment(a.id)}/>
           ))}
         </div>
 
@@ -186,15 +233,16 @@ const AssignmentPanel = ({ run, setRun, go }) => {
         <div style={{ padding:'10px 12px', background:'var(--abyss-1)', border:'1px solid var(--abyss-3)' }}>
           <div className="eyebrow" style={{ color:'var(--coral-dim)', marginBottom:6 }}>◣ DECISION</div>
           <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, color:'var(--bone-dim)', fontStyle:'italic', lineHeight:1.5 }}>
-            Some Main Assignments bar the way to others. Choosing one breaks the alternate tide forever.
+            Some assignments bar the way to others. Choosing one breaks the alternate tide forever —
+            a fork in the campaign does the same.
           </div>
         </div>
       </div>
 
       {/* CENTER — Dossier */}
       <div style={{ overflowY:'auto', padding:'24px 28px' }}>
-        <AssignmentDossier assignment={assignment} overseer={overseer} locksOut={
-          assignment.locksOut ? OP_ASSIGNMENTS.filter(a => assignment.locksOut.includes(a.id)) : []
+        <AssignmentDossier assignment={assignment} forsaken={isForsaken} locksOut={
+          assignment.locksOut ? ALL.filter(a => assignment.locksOut.includes(a.id)) : []
         }/>
       </div>
 
@@ -217,7 +265,7 @@ const AssignmentPanel = ({ run, setRun, go }) => {
           </div>
           <div style={{ fontFamily:'Cinzel, serif', fontSize:14, color:'var(--bone)',
             letterSpacing:'0.05em', marginTop:4 }}>
-            {(formations.find(f=>f.w===requiredWidth)?.title) || 'Vanguard'} · W{requiredWidth}
+            {(formations.find(f=>f.w===requiredWidth)?.title) || 'Formation'} · W{requiredWidth}
           </div>
           <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12, color:'var(--bone-dim)',
             fontStyle:'italic', marginTop:3 }}>
@@ -314,15 +362,35 @@ const AssignmentPanel = ({ run, setRun, go }) => {
         <button
           className="btn primary"
           disabled={!canDeploy}
-          onClick={undertake}
+          onClick={requestUndertake}
           style={{ width:'100%', justifyContent:'center', padding:'14px', fontSize:14 }}>
-          {!canDeploy ? 'Array a Lineup First' : `Undertake Assignment`}
+          {isForsaken ? '✕ Path Forsaken'
+            : !canDeploy ? 'Array a Lineup First'
+            : closing.length ? '◣ Undertake · Decide' : 'Undertake Assignment'}
         </button>
         <div style={{ marginTop:8, fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
           letterSpacing:'0.15em', textAlign:'center' }}>
           ‣ SETS THE TIDE IN MOTION
         </div>
+        <button className="btn ghost sm" onClick={()=>setBriefingOpen(true)}
+          style={{ width:'100%', justifyContent:'center', marginTop:8 }}>
+          ❝ Play Assignment Briefing
+        </button>
       </div>
+
+      {briefingOpen && (
+        <BriefingHud assignment={assignment} accent={assignment.palette?.accent}
+          onClose={()=>setBriefingOpen(false)}/>
+      )}
+
+      {confirmDecision && (
+        <ConfirmDialog danger
+          title={`Undertake ${assignment.name}?`}
+          message={`This is a decision. ${ALL.filter(a => closing.includes(a.id)).map(a => a.name).join(' and ')} will be forsaken for the rest of this run.`}
+          confirmLabel="◣ Undertake"
+          onConfirm={undertake}
+          onClose={()=>setConfirmDecision(false)}/>
+      )}
     </div>
   );
 };
@@ -497,7 +565,7 @@ const PortalPanel = ({ run, setRun, go }) => {
   const [waitSec, setWaitSec] = React.useState(0);
 
   // Host-a-room config + the created room (scaffolding — no live networking yet).
-  const [hostCfg, setHostCfg] = React.useState({ mapW:8, lineupW:6, ranked:false, timer:45, visibility:'public' });
+  const [hostCfg, setHostCfg] = React.useState({ mapW:8, lineupW:DEFAULT_FORMATION_W, ranked:false, timer:45, visibility:'public' });
   const [room, setRoom] = React.useState(null);
   const setCfg = (k, v) => setHostCfg(c => ({ ...c, [k]: v }));
   const createRoom = () => {
@@ -724,12 +792,12 @@ const PortalPanel = ({ run, setRun, go }) => {
                 <div style={{ background:'var(--abyss-1)', border:'1px solid var(--abyss-3)',
                   padding:'16px 18px', display:'flex', flexDirection:'column', gap:14 }}>
                   <PortalOptRow label="Map Size" hint="The board both broods fight on.">
-                    <PortalSeg value={hostCfg.mapW} onChange={v=>setCfg('mapW', v)}
-                      options={[{v:6,l:'6×6'},{v:8,l:'8×8'},{v:10,l:'10×10'}]}/>
+                    <PortalSeg value={hostCfg.mapW} onChange={v=>{ setCfg('mapW', v); if (hostCfg.lineupW > v) setCfg('lineupW', formationFitting(v)); }}
+                      options={[{v:6,l:'6×6'},{v:8,l:'8×8'},{v:10,l:'10×10'},{v:12,l:'12×12'}]}/>
                   </PortalOptRow>
                   <PortalOptRow label="Formation Width" hint="Lineup width each side must bring.">
-                    <PortalSeg value={hostCfg.lineupW} onChange={v=>setCfg('lineupW', v)}
-                      options={[{v:4,l:'W4'},{v:6,l:'W6'},{v:8,l:'W8'},{v:10,l:'W10'}]}/>
+                    <PortalSeg value={hostCfg.lineupW} onChange={v=>{ setCfg('lineupW', v); if (hostCfg.mapW < v) setCfg('mapW', v); }}
+                      options={FORMATIONS.map(f => ({ v:f.w, l:f.label }))}/>
                   </PortalOptRow>
                   <PortalOptRow label="Match Type" hint="Ranked moves ELO; casual does not.">
                     <PortalSeg value={hostCfg.ranked} onChange={v=>setCfg('ranked', v)}
@@ -932,12 +1000,7 @@ const PortalSeg = ({ value, onChange, options }) => (
 // =============================================================================
 // PANEL 4 · TRAINING GROUND — custom both-side unit builder
 // =============================================================================
-const TRAINING_FORMATIONS = [
-  { w:4,  label:'W4',  title:'Skirmish',  color:'oklch(0.7 0.12 35)' },
-  { w:6,  label:'W6',  title:'Vanguard',  color:'oklch(0.7 0.13 195)' },
-  { w:8,  label:'W8',  title:'Standard',  color:'var(--brass)' },
-  { w:10, label:'W10', title:'Tide-Wall', color:'oklch(0.65 0.15 290)' },
-];
+const TRAINING_FORMATIONS = FORMATIONS;
 
 const TRAINING_MODES = [
   { id:'pvp',   label:'PvP',      glyph:'⚔', tag:'Player · Player',
@@ -959,7 +1022,7 @@ const TrainingPanel = ({ run, setRun, go }) => {
     if (run.trainingMode) setRun(r => { const { trainingMode, ...rest } = r; return rest; });
   // eslint-disable-next-line
   }, []);
-  const [width,   setWidth]   = React.useState(run.lineupWidth || 6);
+  const [width,   setWidth]   = React.useState(formationWidthUp(run.lineupWidth || DEFAULT_FORMATION_W));
   const [sideAId, setSideAId] = React.useState(null);
   const [sideBId, setSideBId] = React.useState(null);
   const [aiSkill, setAiSkill] = React.useState('measured');
@@ -1214,7 +1277,7 @@ const TrainingPvPDev = ({ run, setRun, go }) => {
   const [code,   setCode]   = React.useState(saved.code || genCode());  // loopback rendezvous
   const [addr,   setAddr]   = React.useState(saved.addr || '');         // tailscale peer/own IP
   const [port,   setPort]   = React.useState(saved.port || 7777);
-  const [cfg,    setCfg]    = React.useState({ mapW: saved.mapW || 8, lineupW: saved.lineupW || 6 });
+  const [cfg,    setCfg]    = React.useState({ mapW: saved.mapW || 8, lineupW: formationWidthUp(saved.lineupW || DEFAULT_FORMATION_W) });
   const [status, setStatus] = React.useState('idle'); // idle | connecting | connected | closed | error
   const [log,    setLog]    = React.useState([]);
   const linkRef = React.useRef(null);
@@ -1380,12 +1443,12 @@ const TrainingPvPDev = ({ run, setRun, go }) => {
         display:'flex', flexDirection:'column', gap:12, opacity: role === 'join' ? 0.6 : 1 }}>
         <div className="caps">Match Rules {role === 'join' && '· set by host'}</div>
         <PortalOptRow label="Map Size" hint="Board both broods fight on.">
-          <PortalSeg value={cfg.mapW} onChange={v=>setC('mapW', v)}
-            options={[{v:6,l:'6×6'},{v:8,l:'8×8'},{v:10,l:'10×10'}]}/>
+          <PortalSeg value={cfg.mapW} onChange={v=>{ setC('mapW', v); if (cfg.lineupW > v) setC('lineupW', formationFitting(v)); }}
+            options={[{v:6,l:'6×6'},{v:8,l:'8×8'},{v:10,l:'10×10'},{v:12,l:'12×12'}]}/>
         </PortalOptRow>
         <PortalOptRow label="Formation Width" hint="Lineup width each side brings.">
-          <PortalSeg value={cfg.lineupW} onChange={v=>setC('lineupW', v)}
-            options={[{v:4,l:'W4'},{v:6,l:'W6'},{v:8,l:'W8'},{v:10,l:'W10'}]}/>
+          <PortalSeg value={cfg.lineupW} onChange={v=>{ setC('lineupW', v); if (cfg.mapW < v) setC('mapW', v); }}
+            options={FORMATIONS.map(f => ({ v:f.w, l:f.label }))}/>
         </PortalOptRow>
       </div>
 
@@ -1555,8 +1618,12 @@ const LineupMiniCard = ({ lineup, roster, accent, selected, onClick }) => {
 // =============================================================================
 // SHARED · ASSIGNMENT CARDS (unchanged from prior version)
 // =============================================================================
-const AssignmentPick = ({ assignment, active, onClick }) => {
+const AssignmentPick = ({ assignment, active, forsaken, onClick }) => {
   const overseer = OVERSEERS[assignment.overseer];
+  // Campaign tides have no overseer — they say where they sit in the chain.
+  const subtitle = assignment.kind === 'campaign'
+    ? (assignment.after?.length ? `After ${assignment.after.join(' · ')}` : 'Opening tide')
+    : overseer?.name;
   return (
     <button onClick={onClick}
       style={{
@@ -1565,29 +1632,38 @@ const AssignmentPick = ({ assignment, active, onClick }) => {
         border:'1px solid', borderColor: active ? assignment.palette.accent : 'var(--abyss-3)',
         borderLeft: active ? `3px solid ${assignment.palette.accent}` : '3px solid transparent',
         color:'var(--bone)', position:'relative', transition:'all 0.15s',
+        opacity: forsaken && !active ? 0.5 : 1,
       }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
         <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color: assignment.palette.accent, letterSpacing:'0.2em', textTransform:'uppercase' }}>
           {assignment.type.replace('_',' ')}
         </div>
-        {assignment.decision && (
+        {forsaken ? (
+          <div title="Closed by an earlier decision"
+            style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, color:'var(--bone-dim)', letterSpacing:'0.2em' }}>
+            ✕ FORSAKEN
+          </div>
+        ) : assignment.decision && (
           <div title="Decision: locks out an alternative"
             style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, color:'var(--coral)', letterSpacing:'0.2em' }}>
             ◣ DECISION
           </div>
         )}
       </div>
-      <div style={{ fontFamily:'Cinzel, serif', fontSize:14, marginTop:4, letterSpacing:'0.04em', lineHeight:1.2 }}>
+      <div style={{ fontFamily:'Cinzel, serif', fontSize:14, marginTop:4, letterSpacing:'0.04em', lineHeight:1.2,
+        textDecoration: forsaken ? 'line-through' : 'none', textDecorationColor:'var(--coral-dim)' }}>
         {assignment.name}
       </div>
-      <div style={{ fontSize:10, color:'var(--bone-dim)', marginTop:4, fontFamily:'Cormorant Garamond, serif', fontStyle:'italic' }}>
-        {overseer.name}
-      </div>
+      {subtitle && (
+        <div style={{ fontSize:10, color:'var(--bone-dim)', marginTop:4, fontFamily:'Cormorant Garamond, serif', fontStyle:'italic' }}>
+          {subtitle}
+        </div>
+      )}
     </button>
   );
 };
 
-const AssignmentDossier = ({ assignment, overseer, locksOut }) => {
+const AssignmentDossier = ({ assignment, locksOut, forsaken }) => {
   return (
     <div>
       <div style={{ position:'relative', padding:'20px 24px', marginBottom:20,
@@ -1620,7 +1696,8 @@ const AssignmentDossier = ({ assignment, overseer, locksOut }) => {
         <div style={{ position:'relative' }}>
           <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
             <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color: assignment.palette.accent, letterSpacing:'0.25em', textTransform:'uppercase' }}>
-              {assignment.kind === 'main' ? 'Main Assignment' : 'Side Assignment'}
+              {assignment.kind === 'main' ? 'Main Assignment'
+                : assignment.kind === 'campaign' ? 'Campaign Tide' : 'Side Assignment'}
             </span>
             <span style={{ color:'var(--brass-dim)' }}>·</span>
             <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--bone-dim)', letterSpacing:'0.2em' }}>
@@ -1646,6 +1723,13 @@ const AssignmentDossier = ({ assignment, overseer, locksOut }) => {
 
       <div style={{ display:'grid', gridTemplateColumns:'1.3fr 1fr', gap:16 }}>
         <div style={{ padding:'18px 20px', background:'var(--abyss-1)', border:'1px solid var(--abyss-3)' }}>
+          {forsaken && (
+            <div style={{ marginBottom:14, padding:'8px 12px', border:'1px solid var(--coral-dim)',
+              background:'rgba(90,30,30,0.25)', fontFamily:'JetBrains Mono, monospace', fontSize:9.5,
+              letterSpacing:'0.18em', color:'var(--coral)' }}>
+              ✕ FORSAKEN — AN EARLIER DECISION CLOSED THIS PATH
+            </div>
+          )}
           <div className="caps" style={{ marginBottom:10 }}>Brief</div>
           <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:16, color:'var(--bone)', lineHeight:1.65, fontStyle:'italic' }}>
             &ldquo;{assignment.description}&rdquo;
@@ -1682,35 +1766,12 @@ const AssignmentDossier = ({ assignment, overseer, locksOut }) => {
         </div>
 
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          <div style={{ padding:'14px 16px', background:'var(--abyss-1)', border:'1px solid var(--abyss-3)' }}>
-            <div className="caps" style={{ marginBottom:8 }}>Overseer</div>
-            <div style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
-              <OverseerPortrait overseer={overseer}/>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontFamily:'Cinzel, serif', fontSize:14, color:overseer.color, letterSpacing:'0.04em', lineHeight:1.2 }}>
-                  {overseer.name}
-                </div>
-                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)', marginTop:3, letterSpacing:'0.15em', textTransform:'uppercase' }}>
-                  {overseer.title}
-                </div>
-                <div style={{ marginTop:8, fontFamily:'Cormorant Garamond, serif', fontSize:12, color:'var(--bone-dim)', fontStyle:'italic', lineHeight:1.5 }}>
-                  {overseer.flavor}
-                </div>
-              </div>
-            </div>
-          </div>
+          <MissionMapFrame assignment={assignment}/>
 
           <div style={{ padding:'14px 16px', background:'var(--abyss-1)', border:'1px solid var(--abyss-3)' }}>
             <div className="caps" style={{ marginBottom:8 }}>Tidal Conditions</div>
             <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, color:'var(--bone)', fontStyle:'italic', lineHeight:1.5 }}>
               {assignment.weather}
-            </div>
-          </div>
-
-          <div style={{ padding:'14px 16px', background:'var(--abyss-1)', border:'1px solid var(--abyss-3)' }}>
-            <div className="caps" style={{ marginBottom:8 }}>Coordinates</div>
-            <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:12, color:'var(--bone)' }}>
-              {assignment.location}
             </div>
           </div>
         </div>
@@ -1727,48 +1788,76 @@ const RewardChip = ({ glyph, color, label, v }) => (
   </div>
 );
 
-const OverseerPortrait = ({ overseer }) => (
-  <div style={{
-    width:64, height:80, flexShrink:0, position:'relative',
-    background:'linear-gradient(180deg, var(--abyss-3), var(--abyss-0))',
-    border:`1px solid ${overseer.color}`,
-    overflow:'hidden',
-  }}>
-    <svg viewBox="0 0 64 80" style={{ position:'absolute', inset:0, width:'100%', height:'100%' }}>
-      <defs>
-        <radialGradient id={`os-${overseer.id}`} cx="50%" cy="30%" r="65%">
-          <stop offset="0%" stopColor={overseer.color} stopOpacity="0.5"/>
-          <stop offset="100%" stopColor="transparent"/>
-        </radialGradient>
-      </defs>
-      <rect width="64" height="80" fill={`url(#os-${overseer.id})`}/>
-      <path d="M 10 80 L 10 50 Q 12 30 32 22 Q 52 30 54 50 L 54 80 Z" fill="oklch(0.1 0.02 220)"/>
-      <path d="M 32 22 Q 22 30 20 42 Q 28 38 32 42 Q 36 38 44 42 Q 42 30 32 22 Z" fill="oklch(0.07 0.02 220)"/>
-      <ellipse cx="32" cy="40" rx="8" ry="10" fill="oklch(0.03 0.01 220)"/>
-      {overseer.id === 'witness-marrow' && (
-        <g><circle cx="28" cy="38" r="1" fill="oklch(0.85 0.08 85)"/><circle cx="36" cy="38" r="1" fill="oklch(0.85 0.08 85)"/></g>
-      )}
-      {overseer.id === 'choir-below' && (
-        <g>{[...Array(7)].map((_,i)=>(
-          <circle key={i} cx={24+(i%4)*3} cy={36+(i>3?4:0)} r="0.8" fill={overseer.color}/>
-        ))}</g>
-      )}
-      {overseer.id === 'iron-widow' && (
-        <g><circle cx="32" cy="38" r="2" fill={overseer.color}/>
-          <circle cx="32" cy="38" r="4" fill="none" stroke={overseer.color} strokeWidth="0.5" opacity="0.6"/></g>
-      )}
-      {overseer.id === 'pale-mariner' && (
-        <g><line x1="26" y1="38" x2="30" y2="38" stroke={overseer.color} strokeWidth="1.5"/>
-          <line x1="34" y1="38" x2="38" y2="38" stroke={overseer.color} strokeWidth="1.5"/></g>
-      )}
-      {overseer.id === 'drowned-duke' && (
-        <g><path d="M 24 34 L 28 38 L 24 42 Z" fill={overseer.color} opacity="0.8"/>
-          <path d="M 40 34 L 36 38 L 40 42 Z" fill={overseer.color} opacity="0.8"/></g>
-      )}
-      <path d="M 20 22 L 22 14 L 28 20 L 32 12 L 36 20 L 42 14 L 44 22" fill="none" stroke={overseer.color} strokeWidth="0.7" opacity="0.8"/>
-    </svg>
-  </div>
-);
+// Mission map — an image slot for where the assignment takes place. Drop a
+// picture at assets/maps/<assignment id>.png (or set `mapImage` on the
+// assignment) and it fills the frame; until then the frame says where the file
+// is expected.
+const MissionMapFrame = ({ assignment }) => {
+  const src = assignment.mapImage || `assets/maps/${assignment.id}.png`;
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => { setFailed(false); }, [src]);
+  const accent = assignment.palette?.accent || 'var(--brass)';
+
+  return (
+    <div style={{ background:'var(--abyss-1)', border:'1px solid var(--abyss-3)', padding:'12px 12px 10px' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8 }}>
+        <div className="caps">Mission Map</div>
+        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, letterSpacing:'0.2em',
+          color: failed ? 'var(--bone-dim)' : accent }}>
+          {failed ? '◇ UNCHARTED' : '◆ CHARTED'}
+        </div>
+      </div>
+
+      <div style={{ position:'relative', aspectRatio:'4 / 3', overflow:'hidden',
+        border:'1px solid var(--brass-deep)',
+        background:`linear-gradient(180deg, ${assignment.palette?.top || 'var(--abyss-2)'}, ${assignment.palette?.bottom || 'var(--abyss-0)'})` }}>
+
+        {!failed && (
+          <img src={src} alt={`Map of ${assignment.name}`} onError={()=>setFailed(true)}
+            style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }}/>
+        )}
+
+        {failed && (
+          <>
+            {/* blank chart — grid, compass, a drifting current */}
+            <svg viewBox="0 0 400 300" preserveAspectRatio="none"
+              style={{ position:'absolute', inset:0, width:'100%', height:'100%', opacity:0.35, pointerEvents:'none' }}>
+              {[...Array(9)].map((_,i)=>(
+                <line key={`v${i}`} x1={i*50} y1="0" x2={i*50} y2="300" stroke="oklch(0.55 0.08 75)" strokeWidth="0.4"/>
+              ))}
+              {[...Array(7)].map((_,i)=>(
+                <line key={`h${i}`} x1="0" y1={i*50} x2="400" y2={i*50} stroke="oklch(0.55 0.08 75)" strokeWidth="0.4"/>
+              ))}
+              <path d="M 20 210 Q 130 180 220 215 Q 300 245 385 220" stroke={accent} strokeWidth="1" fill="none"/>
+              <g transform="translate(350 52)">
+                <circle r="22" fill="none" stroke="oklch(0.65 0.1 75)" strokeWidth="0.6"/>
+                <path d="M 0 -22 L 3.5 0 L 0 22 L -3.5 0 Z" fill="oklch(0.7 0.12 85)"/>
+              </g>
+            </svg>
+            <div style={{ position:'absolute', inset:10, border:'1px dashed var(--abyss-4)',
+              display:'grid', placeItems:'center', textAlign:'center', padding:12 }}>
+              <div>
+                <div style={{ fontFamily:'Cinzel, serif', fontSize:22, color:'var(--brass-dim)' }}>⌖</div>
+                <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, fontStyle:'italic',
+                  color:'var(--bone-dim)', marginTop:4 }}>No chart filed for this tide.</div>
+                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
+                  letterSpacing:'0.08em', marginTop:8, wordBreak:'break-all', opacity:0.8 }}>
+                  {src}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* filigree corners */}
+        <span style={{ position:'absolute', top:4, left:4, width:10, height:10,
+          borderTop:'1px solid var(--brass)', borderLeft:'1px solid var(--brass)', opacity:0.7 }}/>
+        <span style={{ position:'absolute', bottom:4, right:4, width:10, height:10,
+          borderBottom:'1px solid var(--brass)', borderRight:'1px solid var(--brass)', opacity:0.7 }}/>
+      </div>
+    </div>
+  );
+};
 
 // =============================================================================
 // PANEL 5 · SIMULATION — linear tower ascent. One objective on every floor:
@@ -1794,7 +1883,7 @@ const simFloorMeta = (f) => {
   const name = isApex
     ? SIM_APEX[(f/10 - 1) % SIM_APEX.length]
     : SIM_COMMANDERS[(f - 1) % SIM_COMMANDERS.length];
-  const width = f <= 10 ? 6 : f <= 25 ? 8 : 10;       // board grows with depth
+  const width = FORMATION_WIDTHS[f <= 10 ? 0 : f <= 25 ? 1 : 2];   // board grows with depth
   const threat = Math.min(10, 1 + Math.floor((f - 1) / 5));
   const accent = isApex ? 'var(--coral)' : isElite ? 'var(--void)' : 'var(--brass)';
   return { f, tier, name, width, threat, accent, isApex, isElite };
@@ -2034,7 +2123,7 @@ const PvPSetup = ({ run, setRun, go }) => {
   const allLineups = run.lineups || {};
 
   const eligibleFor = (w) => (allLineups[w] || []).filter(ln => Object.keys(ln.board || {}).length > 0);
-  const [width, setWidth] = React.useState(sess.lineupW || run.lineupWidth || 6);
+  const [width, setWidth] = React.useState(formationWidthUp(sess.lineupW || run.lineupWidth || DEFAULT_FORMATION_W));
   const [sideAId, setSideAId] = React.useState(null);
   const [sideBId, setSideBId] = React.useState(null);
 

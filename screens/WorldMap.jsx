@@ -760,7 +760,7 @@ const LineupModal = ({ run, setRun, onClose, onConfirm }) => {
   const OP_RELICS = window.OP_RELICS || [];
   const roster = run.roster || [];
 
-  const width   = run.lineupWidth || 6;
+  const width   = run.lineupWidth || DEFAULT_FORMATION_W;
   const pool    = (run.lineups || {})[width] || [];
   const lineup  = pool.find(l => l.id === run.activeLineupId) || null;
   const board   = lineup?.board || {};
