@@ -128,6 +128,7 @@ const MainMenu = ({ go, setRun }) => {
         <div style={{ display:'flex', flexDirection:'column', gap:10, width:340, margin:'0 auto' }}>
           {[
             { id:'new', label:'Start Game', kind:'primary', onClick: spawnNewBrood },
+            { id:'board', label:'Board Editor', kind:'ghost', onClick: ()=>go('board-editor') },
             { id:'forge', label:'Level Editor', kind:'ghost', onClick: ()=>go('level-forge') },
             { id:'unit', label:'Unit Editor', kind:'ghost', onClick: ()=>go('unit-editor') },
             { id:'dialog', label:'Dialog Editor', kind:'ghost', onClick: ()=>go('dialog-editor') },

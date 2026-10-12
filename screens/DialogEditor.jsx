@@ -78,12 +78,14 @@ const dlgDefault = (assignments = []) => ({
   content: '',
 });
 
-// An ASSIGNMENT is a level authored in the Level Editor (Tide 1, Tide 2 …), and
-// its STAGES are that level's stages — a stage is a sub-unit of one assignment.
+// An ASSIGNMENT is a mission authored in the Level Editor, and its STAGES are
+// that mission's stages — a stage is a sub-unit of one assignment. A stage's ⚑
+// marks live on the board it plays, so they are copied onto it here.
 const dlgAssignments = () => {
-  let levels = [];
-  try { levels = JSON.parse(localStorage.getItem('gok.customLevels')) || []; } catch(e) {}
-  return levels.map(lvl => ({ id: lvl.id, name: lvl.name, stages: lvl.stages || [] }));
+  const { boards, levels } = window.forgeLoadLibrary();
+  const byId = Object.fromEntries(boards.map(b => [b.id, b]));
+  return levels.map(lvl => ({ id: lvl.id, name: lvl.name,
+    stages: lvl.stages.map(st => ({ ...st, objCells: byId[st.boardId]?.objCells || [] })) }));
 };
 
 // Every stage across every assignment, tagged with the one it belongs to.

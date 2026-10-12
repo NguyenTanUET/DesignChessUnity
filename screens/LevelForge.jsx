@@ -1,122 +1,35 @@
-// Level Forge — author custom levels from the main menu.
-// A level is a set of STAGES wired into a flow graph. Each stage is one board:
-// custom width/height, blocked squares, objective, enemy creatures, terrain
-// modifiers, the initial deploy zone and the maximum expansion zone.
+// Level Editor — wire the campaign from the main menu. Nothing about a board is
+// authored here (that is the Board Editor's job); this table only decides which
+// mission follows which, and inside a mission which stage leads to which.
+//
+// A MISSION (stored as a level) is a set of STAGES wired into a flow graph. Each
+// stage plays one board, picked from the boards tagged "Appear on Campaign".
+//
+// MISSION LINKS: `next` chains missions into a campaign. A mission that leads to
+// two or more others is a fork: the missions it leads to become DECISION
+// assignments, and undertaking one forsakes its siblings.
 //
 // BRANCH ROUTES: every stage routes by CONDITION — e.g. an Advance stage may
 // send the player to 1c when they exit at mark A, but to 1d at mark B. Routes
 // can also fire on plain objective completion or a custom-written condition.
+// Marks belong to the stage's board, so editing or swapping that board can
+// strand a route; the stage panel flags it.
 //
-// Persists to localStorage('gok.customLevels'), independent of any run. Schema:
-//   level = { id, name, next:[levelId], stages:[stage] }   (stages[0] = entry)
-// `next` chains levels into a campaign. A level that leads to two or more
-// others is a fork: the levels it leads to become DECISION assignments, and
-// undertaking one forsakes its siblings.
-//   stage = { id, label, w, h, blocked:[], deploy:[], maxZone:[], objCells:[],
-//             enemies:{cell:archetypeKey}, terrain:{cell:terrainId},
-//             objective:objectiveId, turns,
-//             routes:[{ id, when:'complete'|'custom'|cellKey, cond, target }] }
-// Cells are keyed "r-c". Objective cells are auto-lettered A, B, C… in paint
-// order, so routes can bind to a specific mark.
-
-const FORGE_OBJECTIVES = [
-  { id:'exterminate', glyph:'✕', name:'Exterminate',       desc:'Leave no enemy creature standing.',            needsCells:false, needsEnemies:true },
-  { id:'leader',      glyph:'♛', name:'Eliminate Leader',  desc:'Slay the creature that leads the host.',       needsCells:false, needsEnemies:true },
-  { id:'boss',        glyph:'✠', name:'Boss Fight · Purge',desc:'Bring down the abyssal horror.',               needsCells:false, needsEnemies:true },
-  { id:'escort',      glyph:'☥', name:'Escort',            desc:'Walk the ward alive to a marked square.',      needsCells:true  },
-  { id:'retrieve',    glyph:'◎', name:'Retrieve Resource', desc:'Recover the prize at the mark and hold it.',   needsCells:true  },
-  { id:'seize',       glyph:'⚙', name:'Seize Control',     desc:'Hold the marked squares for N turns.',         needsCells:true, turns:true },
-  { id:'advance',     glyph:'⚑', name:'Advance',           desc:'Push any unit through a marked exit.',         needsCells:true  },
-];
-
-// Terrain — cell modifiers painted onto the board (a creature may stand on one).
-const FORGE_TERRAINS = [
-  { id:'ice',     glyph:'❄', name:'Glacial Floe',  effect:'Creatures entering are slowed next turn.',        color:'oklch(0.8 0.07 230)' },
-  { id:'current', glyph:'≋', name:'Rip Current',   effect:'Sweeps the creature one square along the flow.',  color:'oklch(0.72 0.12 195)' },
-  { id:'thorn',   glyph:'✶', name:'Coral Thorns',  effect:'Entering wounds the creature.',                   color:'oklch(0.66 0.15 25)' },
-  { id:'silt',    glyph:'▒', name:'Silt Bed',      effect:'Sliding moves stop dead on this square.',         color:'oklch(0.6 0.06 80)' },
-  { id:'kelp',    glyph:'❦', name:'Kelp Veil',     effect:'Conceals whoever stands here.',                   color:'oklch(0.65 0.12 150)' },
-  { id:'vent',    glyph:'♨', name:'Thermal Vent',  effect:'Erupts on a cadence, scalding the square.',       color:'oklch(0.7 0.14 50)' },
-];
-
-// Environment props — scenery objects laid onto squares (no side, no stats).
-const FORGE_PROPS = [
-  { id:'rock',  glyph:'▲', name:'Reef Rock',       desc:'A calcified boulder jutting from the silt.',  color:'oklch(0.6 0.04 60)' },
-  { id:'kelp',  glyph:'♒', name:'Kelp Cluster',    desc:'Swaying strands of deep-water kelp.',         color:'oklch(0.62 0.11 150)' },
-  { id:'coral', glyph:'❈', name:'Coral Bloom',     desc:'A blooming thicket of reef coral.',           color:'oklch(0.68 0.13 25)' },
-  { id:'wreck', glyph:'⚓', name:'Sunken Wreck',    desc:'The ribs of a drowned hull.',                 color:'oklch(0.6 0.06 80)' },
-  { id:'bones', glyph:'⌇', name:'Leviathan Bones', desc:'Vertebrae of something that should not fit.', color:'oklch(0.75 0.02 85)' },
-  { id:'idol',  glyph:'♆', name:'Drowned Idol',    desc:'A statue of the tide-god, face eaten away.',  color:'oklch(0.62 0.1 195)' },
-];
-
-// A formation belongs to a side. Stored on each cell as { type, side }.
-const FORGE_SIDES = [
-  { id:'ally',  label:'Ally',  glyph:'◈', color:'var(--bio)',   colorDim:'var(--bio-dim)' },
-  { id:'enemy', label:'Enemy', glyph:'◣', color:'var(--coral)', colorDim:'var(--coral-dim)' },
-];
-// Normalise legacy terrain values (plain string id) into { type, side }.
-const forgeFormationVal = (v) => (typeof v === 'string' ? { type:v, side:'ally' } : v);
-
-const FORGE_TOOLS = [
-  { id:'blocked',   glyph:'⛔', label:'Blocked',  hint:'Squares no creature may enter.',                  color:'oklch(0.6 0.05 30)' },
-  { id:'deploy',    glyph:'◈', label:'Deploy',   hint:'Initial zone the player may act in.',             color:'var(--bio)' },
-  { id:'max',       glyph:'◇', label:'Max Zone', hint:'Furthest zone reachable during play.',            color:'var(--bio-dim)' },
-  { id:'objective', glyph:'⚑', label:'Mark',     hint:'Objective marks (auto-lettered A, B, C…).',       color:'var(--brass)' },
-  { id:'enemy',     glyph:'♛', label:'Enemy',    hint:'Place an enemy creature from the bestiary.',      color:'var(--coral)' },
-  { id:'ally',      glyph:'♕', label:'Ally',     hint:'Place an allied creature from the bestiary.',     color:'var(--bio)' },
-  { id:'terrain',   glyph:'❄', label:'Formation',hint:'Choose a side, then a formation feature to lay on the square.',color:'oklch(0.75 0.1 210)' },
-  { id:'props',     glyph:'⚓', label:'Props',    hint:'Environment scenery — rocks, kelp, wrecks…',      color:'oklch(0.68 0.06 80)' },
-  { id:'erase',     glyph:'⌫', label:'Erase',    hint:'Clear everything from a square.',                 color:'var(--bone-dim)' },
-];
+// Schema and storage live in ForgeLibrary.jsx.
 
 const forgeRouteId = () => `rt-${Math.random().toString(36).slice(2,8)}`;
 
 const forgeDefaultStage = (label) => ({
   id: `st-${Math.random().toString(36).slice(2,8)}`,
-  label, w:8, h:8,
-  blocked:[], deploy:[], maxZone:[], objCells:[],
-  enemies:{}, allies:{}, terrain:{}, props:{},
-  objective:'exterminate', turns:20,
-  routes:[],
-  rewards:{ coral:0, dna:0, lumin:0, relics:[], augs:[], units:[], quest:[] },
+  label, boardId:null, routes:[],
 });
 
-const forgeEmptyRewards = () => ({ coral:0, dna:0, lumin:0, relics:[], augs:[], units:[], quest:[] });
-
-// Best-effort migration for levels saved by earlier Forge versions.
-const forgeMigrate = (levels) => (levels || []).map(lvl => ({
-  ...lvl,
-  next: Array.isArray(lvl.next) ? lvl.next : [],
-  stages: (lvl.stages || []).map(s => {
-    const objMap = { reach:'advance', regicide:'leader', annihilate:'exterminate', survive:'seize' };
-    const legacyPiece = { P:'larva', N:'outrider', B:'prelate', R:'colossus', Q:'matriarch', K:'witch' };
-    const normCreature = (m) => Object.fromEntries(Object.entries(m || {})
-      .map(([k,v]) => [k, FOLLOWER_ARCHETYPES[v] ? v : (legacyPiece[v] || 'larva')]));
-    return {
-      ...s,
-      objective: FORGE_OBJECTIVES.find(o => o.id === s.objective) ? s.objective : (objMap[s.objective] || 'exterminate'),
-      enemies: normCreature(s.enemies),
-      allies: normCreature(s.allies),
-      terrain: Object.fromEntries(Object.entries(s.terrain || {}).map(([k,v]) => [k, forgeFormationVal(v)])),
-      props: s.props || {},
-      turns: s.turns || 20,
-      routes: s.routes || (s.next || []).map(t => ({ id:forgeRouteId(), when:'complete', cond:'', target:t })),
-      rewards: { ...forgeEmptyRewards(), ...(s.rewards || {}) },
-    };
-  }),
-}));
-
-const forgeMarkLetter = (stage, key) => {
-  const i = stage.objCells.indexOf(key);
-  return i < 0 ? '?' : String.fromCharCode(65 + i);
-};
-
-const forgeRouteBadge = (stage, rt) =>
-  rt.when === 'complete' ? '✓' : rt.when === 'custom' ? '✎' : forgeMarkLetter(stage, rt.when);
+const forgeRouteBadge = (board, rt) =>
+  rt.when === 'complete' ? '✓' : rt.when === 'custom' ? '✎' : forgeMarkLetter(board, rt.when);
 
 // =============================================================================
-// CAMPAIGN — levels chained by `next`. Shared with the Command Chamber, which
-// lists these levels as assignments.
+// CAMPAIGN — missions chained by `next`. Shared with the Command Chamber, which
+// lists these missions as assignments.
 // =============================================================================
 
 // Can `from` reach `to` by following links? Used to refuse links that loop.
@@ -136,8 +49,8 @@ const forgeReaches = (levels, from, to) => {
 
 // Derive the campaign graph:
 //   { [levelId]: { prev, next, depth, decision, locksOut, forkFrom } }
-// A level reached from a fork (a level with 2+ links) is a decision; it locks
-// out every other level that same fork leads to.
+// A mission reached from a fork (a mission with 2+ links) is a decision; it
+// locks out every other mission that same fork leads to.
 const forgeCampaign = (levels) => {
   const ids = new Set(levels.map(l => l.id));
   const node = {};
@@ -158,7 +71,7 @@ const forgeCampaign = (levels) => {
     });
   });
 
-  // Depth = longest path from any opening level, so a merge sits after both arms.
+  // Depth = longest path from any opening mission, so a merge sits after both arms.
   const order = [];
   const indeg = Object.fromEntries(levels.map(l => [l.id, node[l.id].prev.length]));
   const queue = levels.filter(l => indeg[l.id] === 0).map(l => l.id);
@@ -173,14 +86,16 @@ const forgeCampaign = (levels) => {
   return node;
 };
 
-// A level dressed as an assignment, so the Command Chamber can list it beside
-// the authored ones. `cnode` is that level's entry from forgeCampaign().
-const forgeLevelAsAssignment = (level, cnode) => {
+// A mission dressed as an assignment, so the Command Chamber can list it beside
+// the authored ones. `cnode` is that mission's entry from forgeCampaign();
+// `boardsById` resolves each stage's board.
+const forgeLevelAsAssignment = (level, cnode, boardsById) => {
   const stages = level.stages || [];
-  const entry = stages[0] || {};
+  const boards = stages.map(st => boardsById[st.boardId]).filter(Boolean);
+  const entry = boardsById[stages[0]?.boardId] || {};
   const obj = FORGE_OBJECTIVES.find(o => o.id === entry.objective) || FORGE_OBJECTIVES[0];
-  const sum = (k) => stages.reduce((n, st) => n + (st.rewards?.[k] || 0), 0);
-  const relic = stages.flatMap(st => st.rewards?.relics || [])[0] || null;
+  const sum = (k) => boards.reduce((n, b) => n + (b.rewards?.[k] || 0), 0);
+  const relic = boards.flatMap(b => b.rewards?.relics || [])[0] || null;
   let h = 0;
   for (let i = 0; i < level.id.length; i++) h = (h * 31 + level.id.charCodeAt(i)) >>> 0;
   const hue = [190, 270, 25, 150, 75, 300, 220][h % 7];
@@ -188,13 +103,13 @@ const forgeLevelAsAssignment = (level, cnode) => {
     id: level.id, kind:'campaign', name: level.name,
     type: obj.name.toUpperCase(),
     location: `${stages.length} stage${stages.length === 1 ? '' : 's'} · entry board ${entry.w || 8}×${entry.h || 8}`,
-    weather: level.weather || 'Uncharted water — authored at the Cartographer\u2019s Table.',
+    weather: level.weather || 'Uncharted water — authored at the Cartographer’s Table.',
     description: level.description || `${obj.desc} An authored tide of ${stages.length} stage${stages.length === 1 ? '' : 's'}.`,
     overseer: null,
     rewards: { coral: sum('coral'), dna: sum('dna'), lumin: sum('lumin'), relic },
     palette: { top:`oklch(0.24 0.06 ${hue})`, bottom:`oklch(0.09 0.025 ${hue})`, accent:`oklch(0.72 0.14 ${hue})` },
     map: 0,
-    width: formationFitting(entry.w || 8),
+    width: entry.lineupW || formationFitting(entry.w || 8),
     depth: cnode?.depth || 0,
     prev: cnode?.prev || [],
     decision: !!cnode?.decision,
@@ -203,36 +118,20 @@ const forgeLevelAsAssignment = (level, cnode) => {
 };
 
 const LevelForge = ({ go }) => {
-  const [levels, setLevels] = React.useState(() => {
-    try { return forgeMigrate(JSON.parse(localStorage.getItem('gok.customLevels')) || []); }
-    catch(e) { return []; }
-  });
+  // Boards are read only — they are authored in the Board Editor.
+  const [lib] = React.useState(forgeLoadLibrary);
+  const [levels, setLevels] = React.useState(lib.levels);
   const [openId, setOpenId] = React.useState(null);
-
-  // Persist — DEBOUNCED. Drag-painting fires one state update per square; writing
-  // the whole library (JSON.stringify + synchronous localStorage I/O) on every one
-  // is what made the editor feel sluggish. Coalesce into one write per idle pause,
-  // and flush on the way out so nothing is ever lost.
-  const levelsRef = React.useRef(levels);
-  levelsRef.current = levels;
-  const firstRun = React.useRef(true);
-  React.useEffect(() => {
-    if (firstRun.current) { firstRun.current = false; return; } // don't rewrite what we just read
-    const t = setTimeout(() => {
-      try { localStorage.setItem('gok.customLevels', JSON.stringify(levelsRef.current)); } catch(e) {}
-    }, 400);
-    return () => clearTimeout(t);
-  }, [levels]);
-  React.useEffect(() => () => {
-    try { localStorage.setItem('gok.customLevels', JSON.stringify(levelsRef.current)); } catch(e) {}
-  }, []);
+  const boardsById = React.useMemo(() => Object.fromEntries(lib.boards.map(b => [b.id, b])), [lib]);
+  const campaignBoards = React.useMemo(() => lib.boards.filter(b => b.inCampaign), [lib]);
+  useForgePersist('gok.customLevels', levels);
 
   const open = levels.find(l => l.id === openId) || null;
 
   const newLevel = () => {
     const lvl = {
       id:`lvl-${Math.random().toString(36).slice(2,8)}`,
-      name:`Tide ${levels.length + 1}`,
+      name:`Mission ${levels.length + 1}`,
       next:[],
       stages:[forgeDefaultStage('1a')],
     };
@@ -243,7 +142,7 @@ const LevelForge = ({ go }) => {
   const updateLevel = (id, mutator) =>
     setLevels(ls => ls.map(l => l.id === id ? { ...l, ...mutator(l) } : l));
 
-  // Deleting a level also cuts every link that pointed at it.
+  // Deleting a mission also cuts every link that pointed at it.
   const deleteLevel = (id) => {
     setLevels(ls => ls
       .filter(l => l.id !== id)
@@ -262,7 +161,7 @@ const LevelForge = ({ go }) => {
         borderBottom:'1px solid var(--abyss-4)' }}>
         <div style={{ display:'flex', alignItems:'center', gap:14 }}>
           <button className="btn ghost sm" onClick={()=> open ? setOpenId(null) : go('menu')}>
-            ← {open ? 'All Levels' : 'Menu'}
+            ← {open ? 'All Missions' : 'Menu'}
           </button>
           <div>
             <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.3em',
@@ -276,30 +175,33 @@ const LevelForge = ({ go }) => {
         </div>
         <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
           letterSpacing:'0.2em', textTransform:'uppercase' }}>
-          {open ? `${open.stages.length} STAGE${open.stages.length===1?'':'S'}` : `${levels.length} LEVEL${levels.length===1?'':'S'}`}
+          {open ? `${open.stages.length} STAGE${open.stages.length===1?'':'S'}` : `${levels.length} MISSION${levels.length===1?'':'S'}`}
+          {' · '}{campaignBoards.length} CAMPAIGN BOARD{campaignBoards.length===1?'':'S'}
         </div>
       </div>
 
       {open
-        ? <ForgeEditor key={open.id} level={open} levels={levels}
+        ? <ForgeMissionEditor key={open.id} level={open} levels={levels}
+            boardsById={boardsById} campaignBoards={campaignBoards}
             onChange={(mut)=>updateLevel(open.id, mut)}
             onDelete={()=>deleteLevel(open.id)}/>
-        : <ForgeLevelList levels={levels} onOpen={setOpenId} onNew={newLevel} onDelete={deleteLevel}/>}
+        : <ForgeLevelList levels={levels} boardsById={boardsById}
+            onOpen={setOpenId} onNew={newLevel} onDelete={deleteLevel}/>}
     </div>
   );
 };
 
 // =============================================================================
-// LEVEL LIST
+// MISSION LIST
 // =============================================================================
-const ForgeLevelList = ({ levels, onOpen, onNew, onDelete }) => {
+const ForgeLevelList = ({ levels, boardsById, onOpen, onNew, onDelete }) => {
   const campaign = React.useMemo(() => forgeCampaign(levels), [levels]);
   const nameOf = (id) => levels.find(l => l.id === id)?.name || '?';
   const flowSummary = (lvl) => {
     const edges = [];
     lvl.stages.forEach(s => s.routes.forEach(rt => {
       const t = lvl.stages.find(x => x.id === rt.target);
-      if (t) edges.push(`${s.label}→${t.label}·${forgeRouteBadge(s, rt)}`);
+      if (t) edges.push(`${s.label}→${t.label}·${forgeRouteBadge(boardsById[s.boardId], rt)}`);
     }));
     if (!edges.length) return 'no flow wired';
     return edges.slice(0,4).join('  ') + (edges.length > 4 ? `  +${edges.length-4}` : '');
@@ -310,56 +212,65 @@ const ForgeLevelList = ({ levels, onOpen, onNew, onDelete }) => {
       <div style={{ marginBottom:20, maxWidth:760 }}>
         <div className="eyebrow" style={{ color:'var(--bio-dim)' }}>◆ Chart Unwritten Tides</div>
         <h1 style={{ fontFamily:'Cinzel, serif', fontSize:30, margin:'4px 0 6px', letterSpacing:'0.08em' }}>
-          CREATE A LEVEL
+          CHART THE CAMPAIGN
         </h1>
         <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:14, color:'var(--bone-dim)',
           fontStyle:'italic', lineHeight:1.6 }}>
-          A level is a chain of stages — each stage a board of its own shape, its own
-          obstacles, its own demand. Branch the flow on conditions and the tide will follow your chart.
+          A mission is a chain of stages, each played on a board from the Board Editor.
+          Link missions into a campaign, branch the stages on conditions, and the tide will follow your chart.
         </div>
       </div>
 
       <ForgeCampaignGraph levels={levels} campaign={campaign} onOpen={onOpen}/>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:14, maxWidth:1100 }}>
-        {levels.map(lvl => (
-          <div key={lvl.id} className="panel ornate hoverable" style={{ padding:'18px 18px', cursor:'pointer' }}
-            onClick={()=>onOpen(lvl.id)}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
-              <div style={{ fontFamily:'Cinzel, serif', fontSize:17, color:'var(--bone)', letterSpacing:'0.05em' }}>
-                {lvl.name}
+        {levels.map(lvl => {
+          const unboarded = lvl.stages.filter(s => !boardsById[s.boardId]).length;
+          return (
+            <div key={lvl.id} className="panel ornate hoverable" style={{ padding:'18px 18px', cursor:'pointer' }}
+              onClick={()=>onOpen(lvl.id)}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
+                <div style={{ fontFamily:'Cinzel, serif', fontSize:17, color:'var(--bone)', letterSpacing:'0.05em' }}>
+                  {lvl.name}
+                </div>
+                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--brass)',
+                  letterSpacing:'0.18em' }}>
+                  {lvl.stages.length} STAGE{lvl.stages.length===1?'':'S'}
+                </div>
               </div>
-              <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--brass)',
-                letterSpacing:'0.18em' }}>
-                {lvl.stages.length} STAGE{lvl.stages.length===1?'':'S'}
+              <div style={{ marginTop:8, fontFamily:'JetBrains Mono, monospace', fontSize:9.5,
+                color:'var(--bio-dim)', letterSpacing:'0.12em' }}>
+                {flowSummary(lvl)}
               </div>
-            </div>
-            <div style={{ marginTop:8, fontFamily:'JetBrains Mono, monospace', fontSize:9.5,
-              color:'var(--bio-dim)', letterSpacing:'0.12em' }}>
-              {flowSummary(lvl)}
-            </div>
-            <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:9,
-              letterSpacing:'0.12em', color:'var(--bone-dim)', display:'flex', gap:8, flexWrap:'wrap' }}>
-              {campaign[lvl.id]?.next.length
-                ? <span>→ {campaign[lvl.id].next.map(nameOf).join(' · ')}</span>
-                : <span style={{ opacity:0.6 }}>→ campaign ends here</span>}
-              {campaign[lvl.id]?.decision && (
-                <span style={{ color:'var(--coral)' }}>◣ DECISION</span>
+              <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:9,
+                letterSpacing:'0.12em', color:'var(--bone-dim)', display:'flex', gap:8, flexWrap:'wrap' }}>
+                {campaign[lvl.id]?.next.length
+                  ? <span>→ {campaign[lvl.id].next.map(nameOf).join(' · ')}</span>
+                  : <span style={{ opacity:0.6 }}>→ campaign ends here</span>}
+                {campaign[lvl.id]?.decision && (
+                  <span style={{ color:'var(--coral)' }}>◣ DECISION</span>
+                )}
+              </div>
+              {unboarded > 0 && (
+                <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:8.5,
+                  color:'oklch(0.75 0.1 30)', letterSpacing:'0.12em' }}>
+                  ⚠ {unboarded} STAGE{unboarded===1?'':'S'} WITHOUT A BOARD
+                </div>
               )}
+              <div style={{ display:'flex', gap:6, marginTop:14 }}>
+                <button className="btn ghost sm" onClick={(e)=>{ e.stopPropagation(); onOpen(lvl.id); }}>✎ Edit</button>
+                <button className="btn ghost sm" style={{ color:'oklch(0.7 0.15 25)' }}
+                  onClick={(e)=>{ e.stopPropagation(); onDelete(lvl.id); }}>✕ Delete</button>
+              </div>
             </div>
-            <div style={{ display:'flex', gap:6, marginTop:14 }}>
-              <button className="btn ghost sm" onClick={(e)=>{ e.stopPropagation(); onOpen(lvl.id); }}>✎ Edit</button>
-              <button className="btn ghost sm" style={{ color:'oklch(0.7 0.15 25)' }}
-                onClick={(e)=>{ e.stopPropagation(); onDelete(lvl.id); }}>✕ Delete</button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         <button onClick={onNew}
           style={{ minHeight:130, background:'transparent', border:'1px dashed var(--abyss-4)',
             color:'var(--brass)', fontFamily:'Cinzel, serif', fontSize:15, letterSpacing:'0.08em',
             display:'grid', placeItems:'center' }}>
-          + New Level
+          + New Mission
         </button>
       </div>
     </div>
@@ -367,18 +278,14 @@ const ForgeLevelList = ({ levels, onOpen, onNew, onDelete }) => {
 };
 
 // =============================================================================
-// EDITOR — left: flow + stages · center: painter · right: stage settings
+// MISSION EDITOR — left: name, links, stages · center: stage flow + board ·
+// right: the selected stage's board and routes
 // =============================================================================
-const ForgeEditor = ({ level, levels, onChange, onDelete }) => {
+const ForgeMissionEditor = ({ level, levels, boardsById, campaignBoards, onChange, onDelete }) => {
   const stages = level.stages;
   const [selId, setSelId] = React.useState(stages[0]?.id || null);
-  const [tool, setTool] = React.useState('blocked');
-  const [enemyType, setEnemyType] = React.useState(Object.keys(FOLLOWER_ARCHETYPES)[0]);
-  const [allyType,  setAllyType]  = React.useState(Object.keys(FOLLOWER_ARCHETYPES)[0]);
-  const [terrainType, setTerrainType] = React.useState(FORGE_TERRAINS[0].id);
-  const [terrainSide, setTerrainSide] = React.useState('ally');
-  const [propType,    setPropType]    = React.useState(FORGE_PROPS[0].id);
   const stage = stages.find(s => s.id === selId) || stages[0] || null;
+  const board = stage ? boardsById[stage.boardId] || null : null;
 
   const updateStage = (stageId, mutator) =>
     onChange(lvl => ({ stages: lvl.stages.map(s => s.id === stageId ? { ...s, ...mutator(s) } : s) }));
@@ -391,7 +298,7 @@ const ForgeEditor = ({ level, levels, onChange, onDelete }) => {
   };
 
   const deleteStage = (stageId) => {
-    if (stages.length <= 1) return; // a level keeps at least its entry stage
+    if (stages.length <= 1) return; // a mission keeps at least its entry stage
     onChange(lvl => ({
       stages: lvl.stages
         .filter(s => s.id !== stageId)
@@ -403,14 +310,14 @@ const ForgeEditor = ({ level, levels, onChange, onDelete }) => {
   return (
     <div style={{ flex:1, minHeight:0, display:'grid', gridTemplateColumns:'300px 1fr 320px', gap:0 }}>
 
-      {/* LEFT — name, flow graph, stage list */}
+      {/* LEFT — name, mission links, stage list */}
       <div style={{ borderRight:'1px solid var(--abyss-4)', overflowY:'auto', padding:'16px 14px',
         background:'linear-gradient(180deg, var(--abyss-1), var(--abyss-0))',
         display:'flex', flexDirection:'column', gap:14 }}>
 
         <div>
-          <div className="caps" style={{ marginBottom:6 }}>Level Name</div>
-          <input value={level.name} title="Level name"
+          <div className="caps" style={{ marginBottom:6 }}>Mission Name</div>
+          <input value={level.name} title="Mission name"
             onChange={e=>onChange(()=>({ name: e.target.value }))}
             style={{ width:'100%', padding:'8px 10px', background:'var(--abyss-0)',
               border:'1px solid var(--abyss-4)', color:'var(--bone)',
@@ -419,22 +326,14 @@ const ForgeEditor = ({ level, levels, onChange, onDelete }) => {
 
         <ForgeLinkPanel level={level} levels={levels} onChange={onChange}/>
 
-        <div>
-          <div className="caps" style={{ marginBottom:6 }}>Stage Flow</div>
-          <ForgeFlowGraph stages={stages} selId={selId} onSelect={setSelId}/>
-          <div style={{ marginTop:4, fontFamily:'JetBrains Mono, monospace', fontSize:8,
-            color:'var(--bone-dim)', letterSpacing:'0.12em' }}>
-            EDGE TAGS · ✓ COMPLETE · A/B/C MARK · ✎ CUSTOM
-          </div>
-        </div>
-
         <div style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column' }}>
           <div className="caps" style={{ marginBottom:6 }}>Stages</div>
           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
             {stages.map((s, i) => {
               const isSel = s.id === selId;
+              const b = boardsById[s.boardId];
               const leads = s.routes
-                .map(rt => { const t = stages.find(x=>x.id===rt.target); return t ? `${t.label}·${forgeRouteBadge(s, rt)}` : null; })
+                .map(rt => { const t = stages.find(x=>x.id===rt.target); return t ? `${t.label}·${forgeRouteBadge(b, rt)}` : null; })
                 .filter(Boolean);
               return (
                 <div key={s.id} className="hoverable" onClick={()=>setSelId(s.id)}
@@ -451,11 +350,12 @@ const ForgeEditor = ({ level, levels, onChange, onDelete }) => {
                         fontSize:8, color:'var(--bio)', letterSpacing:'0.2em' }}>◈ ENTRY</span>}
                     </span>
                     <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
-                      letterSpacing:'0.12em' }}>{s.w}×{s.h}</span>
+                      letterSpacing:'0.12em' }}>{b ? `${b.size} · ${b.w}×${b.h}` : ''}</span>
                   </div>
                   <div style={{ marginTop:4, fontFamily:'JetBrains Mono, monospace', fontSize:8.5,
-                    color:'var(--bio-dim)', letterSpacing:'0.12em' }}>
-                    {FORGE_OBJECTIVES.find(o=>o.id===s.objective)?.name.toUpperCase()}
+                    color: b ? 'var(--bio-dim)' : 'oklch(0.75 0.1 30)', letterSpacing:'0.12em',
+                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                    {b ? b.name.toUpperCase() : '⚠ NO BOARD'}
                     {leads.length > 0 && <span style={{ color:'var(--bone-dim)' }}> · → {leads.join(', ')}</span>}
                   </div>
                 </div>
@@ -477,36 +377,31 @@ const ForgeEditor = ({ level, levels, onChange, onDelete }) => {
           </button>
           <button className="btn ghost sm" style={{ color:'oklch(0.7 0.15 25)', justifyContent:'center' }}
             onClick={onDelete}>
-            ✕ Delete This Level
+            ✕ Delete This Mission
           </button>
         </div>
       </div>
 
-      {/* CENTER — tools + painter */}
-      {stage && (
-        <div style={{ minHeight:0, overflow:'auto', padding:'16px 20px',
-          display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
-          <ForgeToolbar tool={tool} setTool={setTool}
-            enemyType={enemyType} setEnemyType={setEnemyType}
-            allyType={allyType} setAllyType={setAllyType}
-            terrainType={terrainType} setTerrainType={setTerrainType}
-            terrainSide={terrainSide} setTerrainSide={setTerrainSide}
-            propType={propType} setPropType={setPropType}/>
-          <ForgeBoard key={stage.id} stage={stage} tool={tool}
-            enemyType={enemyType} allyType={allyType}
-            terrainType={terrainType} terrainSide={terrainSide}
-            propType={propType}
-            onEdit={(mut)=>updateStage(stage.id, mut)}/>
-          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
-            letterSpacing:'0.18em', textAlign:'center' }}>
-            ‣ CLICK / DRAG TO PAINT · SAME TOOL AGAIN TO REMOVE · WHEEL ZOOM · SCROLLBARS PAN
+      {/* CENTER — stage flow + the selected stage's board */}
+      <div style={{ minHeight:0, overflow:'auto', padding:'16px 20px',
+        display:'flex', flexDirection:'column', gap:16 }}>
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
+            <div className="caps">Stage Flow</div>
+            <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
+              letterSpacing:'0.15em' }}>
+              EDGE TAGS · ✓ COMPLETE · A/B/C MARK · ✎ CUSTOM · CLICK A STAGE TO SELECT
+            </div>
           </div>
+          <ForgeStageGraph stages={stages} boardsById={boardsById} selId={stage?.id} onSelect={setSelId}/>
         </div>
-      )}
+        {stage && <ForgeStageBoardPreview stage={stage} board={board}/>}
+      </div>
 
       {/* RIGHT — stage settings */}
       {stage && (
-        <ForgeStageSettings key={stage.id} stage={stage} stages={stages}
+        <ForgeStagePanel key={stage.id} stage={stage} stages={stages} board={board}
+          boardsById={boardsById} campaignBoards={campaignBoards}
           onEdit={(mut)=>updateStage(stage.id, mut)}/>
       )}
     </div>
@@ -514,7 +409,7 @@ const ForgeEditor = ({ level, levels, onChange, onDelete }) => {
 };
 
 // =============================================================================
-// LINK PANEL — which levels this one leads to. Two or more links make a fork.
+// LINK PANEL — which missions this one leads to. Two or more links make a fork.
 // =============================================================================
 const ForgeLinkPanel = ({ level, levels, onChange }) => {
   const campaign = React.useMemo(() => forgeCampaign(levels), [levels]);
@@ -524,7 +419,7 @@ const ForgeLinkPanel = ({ level, levels, onChange }) => {
   const link = (id) => id && onChange(l => ({ next: [...(l.next || []), id] }));
   const unlink = (id) => onChange(l => ({ next: (l.next || []).filter(x => x !== id) }));
 
-  // Everything not already linked; a level that can already reach this one
+  // Everything not already linked; a mission that can already reach this one
   // would close a loop, so it is offered but disabled.
   const options = levels
     .filter(l => l.id !== level.id && !me.next.includes(l.id))
@@ -554,8 +449,8 @@ const ForgeLinkPanel = ({ level, levels, onChange }) => {
       </div>
 
       {options.length > 0 ? (
-        <select value="" title="Link a level" onChange={e=>link(e.target.value)} style={inp}>
-          <option value="">+ Link a level…</option>
+        <select value="" title="Link a mission" onChange={e=>link(e.target.value)} style={inp}>
+          <option value="">+ Link a mission…</option>
           {options.map(o => (
             <option key={o.id} value={o.id} disabled={o.loops}>
               {o.name}{o.loops ? '  — would loop back' : ''}
@@ -565,7 +460,7 @@ const ForgeLinkPanel = ({ level, levels, onChange }) => {
       ) : (
         <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
           letterSpacing:'0.12em' }}>
-          ‣ {levels.length < 2 ? 'CREATE ANOTHER LEVEL TO LINK TO' : 'LINKED TO EVERY OTHER LEVEL'}
+          ‣ {levels.length < 2 ? 'CREATE ANOTHER MISSION TO LINK TO' : 'LINKED TO EVERY OTHER MISSION'}
         </div>
       )}
 
@@ -593,7 +488,7 @@ const ForgeLinkPanel = ({ level, levels, onChange }) => {
 };
 
 // =============================================================================
-// CAMPAIGN GRAPH — every level, tiered by depth; fork edges drawn in coral
+// CAMPAIGN GRAPH — every mission, tiered by depth; fork edges drawn in coral
 // =============================================================================
 const ForgeCampaignGraph = ({ levels, campaign, onOpen }) => {
   if (levels.length === 0) return null;
@@ -619,7 +514,7 @@ const ForgeCampaignGraph = ({ levels, campaign, onOpen }) => {
         <div className="caps">Campaign</div>
         <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
           letterSpacing:'0.18em' }}>
-          → LINK · <span style={{ color:'var(--coral)' }}>◣ FORK = DECISION</span> · CLICK A TIDE TO EDIT
+          → LINK · <span style={{ color:'var(--coral)' }}>◣ FORK = DECISION</span> · CLICK A MISSION TO EDIT
         </div>
       </div>
       <div style={{ overflowX:'auto', background:'var(--abyss-0)', border:'1px solid var(--abyss-3)' }}>
@@ -665,7 +560,7 @@ const ForgeCampaignGraph = ({ levels, campaign, onOpen }) => {
       {!linked && levels.length > 1 && (
         <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:8.5,
           color:'var(--bone-dim)', letterSpacing:'0.12em' }}>
-          ‣ NOTHING LINKED YET — OPEN A LEVEL AND USE “LEADS TO” TO CHAIN THE CAMPAIGN
+          ‣ NOTHING LINKED YET — OPEN A MISSION AND USE “LEADS TO” TO CHAIN THE CAMPAIGN
         </div>
       )}
     </div>
@@ -673,9 +568,11 @@ const ForgeCampaignGraph = ({ levels, campaign, onOpen }) => {
 };
 
 // =============================================================================
-// FLOW GRAPH — BFS-tiered mini map; edges carry their route condition tag
+// STAGE GRAPH — BFS-tiered from the entry stage; each node names its board and
+// each edge carries its route condition tag. Routes that point back to an
+// earlier tier dip under the nodes.
 // =============================================================================
-const ForgeFlowGraph = ({ stages, selId, onSelect }) => {
+const ForgeStageGraph = ({ stages, boardsById, selId, onSelect }) => {
   if (!stages.length) return null;
   const depth = { [stages[0].id]: 0 };
   const queue = [stages[0].id];
@@ -689,7 +586,7 @@ const ForgeFlowGraph = ({ stages, selId, onSelect }) => {
       }
     });
   }
-  let extraTier = Math.max(0, ...Object.values(depth)) + 1;
+  const extraTier = Math.max(0, ...Object.values(depth)) + 1;
   stages.forEach(s => { if (depth[s.id] === undefined) depth[s.id] = extraTier; });
 
   const tiers = {};
@@ -697,516 +594,127 @@ const ForgeFlowGraph = ({ stages, selId, onSelect }) => {
   const tierKeys = Object.keys(tiers).map(Number).sort((a,b)=>a-b);
   const maxRows = Math.max(...tierKeys.map(t => tiers[t].length));
 
-  const W = 268, rowH = 44, H = Math.max(70, maxRows * rowH + 16);
-  const tierX = (t) => tierKeys.length === 1 ? W/2 : 28 + (W-56) * (tierKeys.indexOf(t) / (tierKeys.length-1));
+  const NW = 150, NH = 52, colW = 230, rowH = 74, DIP = 46;
+  const W = Math.max(740, tierKeys.length * colW + 40);
+  const H = maxRows * rowH + 30 + DIP;
+  const x0 = (W - tierKeys.length * colW) / 2;
   const pos = {};
-  tierKeys.forEach(t => tiers[t].forEach((s, i) => {
-    pos[s.id] = { x: tierX(t), y: 26 + i*rowH + (maxRows - tiers[t].length) * rowH/2 };
+  tierKeys.forEach((t, ti) => tiers[t].forEach((s, i) => {
+    pos[s.id] = { x: x0 + ti * colW + (colW - NW) / 2,
+                  y: 22 + i * rowH + (maxRows - tiers[t].length) * rowH / 2 };
   }));
+  const clip = (str, n) => str.length > n ? str.slice(0, n - 1) + '…' : str;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:H, background:'var(--abyss-0)',
-      border:'1px solid var(--abyss-3)' }}>
-      {/* edges + condition tags */}
-      {stages.map(s => s.routes.map(rt => {
-        const a = pos[s.id], b = pos[rt.target];
-        if (!a || !b) return null;
-        const mx = (a.x + b.x) / 2;
-        // cubic midpoint for the tag
-        const tx = ((a.x+14) + 6*mx + (b.x-14)) / 8;
-        const ty = (a.y + b.y) / 2;
-        return (
-          <g key={rt.id}>
-            <path d={`M ${a.x+14} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x-14} ${b.y}`}
-              fill="none" stroke="var(--brass-dim)" strokeWidth="1" opacity="0.8"/>
-            <circle cx={tx} cy={ty} r="7" fill="var(--abyss-0)" stroke="var(--abyss-4)" strokeWidth="0.6"/>
-            <text x={tx} y={ty+2.5} textAnchor="middle" fontFamily="JetBrains Mono, monospace"
-              fontSize="7" fill="var(--brass)">{forgeRouteBadge(s, rt)}</text>
-          </g>
-        );
-      }))}
-      {/* nodes */}
-      {stages.map((s, i) => {
-        const p = pos[s.id];
-        const isSel = s.id === selId;
-        return (
-          <g key={s.id} transform={`translate(${p.x} ${p.y})`} style={{ cursor:'pointer' }}
-            onClick={()=>onSelect(s.id)}>
-            <circle r="14" fill={isSel ? 'oklch(0.3 0.06 188)' : 'var(--abyss-2)'}
-              stroke={isSel ? 'var(--brass)' : i===0 ? 'var(--bio-dim)' : 'var(--abyss-4)'} strokeWidth="1.2"/>
-            <text y="3.5" textAnchor="middle" fontFamily="JetBrains Mono, monospace" fontSize="9"
-              fill={isSel ? 'var(--brass)' : 'var(--bone)'}>{s.label}</text>
-            {i === 0 && <text y="-19" textAnchor="middle" fontFamily="JetBrains Mono, monospace"
-              fontSize="6.5" fill="var(--bio-dim)" letterSpacing="0.2em">ENTRY</text>}
-          </g>
-        );
-      })}
-    </svg>
-  );
-};
-
-// =============================================================================
-// TOOLBAR — with bestiary strip (enemy) and terrain strip
-// =============================================================================
-const ForgeToolbar = ({ tool, setTool, enemyType, setEnemyType, allyType, setAllyType, terrainType, setTerrainType, terrainSide, setTerrainSide, propType, setPropType }) => {
-  const active = FORGE_TOOLS.find(t => t.id === tool);
-  const creatures = Object.values(FOLLOWER_ARCHETYPES);
-  // Enemy and Ally share the bestiary strip — only the accent and target state differ.
-  const isCreatureTool = tool === 'enemy' || tool === 'ally';
-  const creatureVal    = tool === 'ally' ? allyType : enemyType;
-  const setCreatureVal = tool === 'ally' ? setAllyType : setEnemyType;
-  const creatureAccent = tool === 'ally' ? 'var(--bio)' : 'var(--coral)';
-
-  return (
-    <div style={{ width:'100%', maxWidth:780 }}>
-      <div style={{ display:'flex', gap:6 }}>
-        {FORGE_TOOLS.map(t => {
-          const isSel = tool === t.id;
+    <div style={{ overflowX:'auto', background:'var(--abyss-0)', border:'1px solid var(--abyss-3)' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width:W, height:H, display:'block' }}>
+        {/* edges + condition tags */}
+        {stages.map(s => s.routes.map(rt => {
+          const a = pos[s.id], b = pos[rt.target];
+          if (!a || !b) return null;
+          const forward = b.x > a.x;
+          // cubic P0 → P3 with handles P1, P2. Forward: right side → left side.
+          // Same tier: loops out past the right sides. Backward: left side →
+          // right side, sagging under the forward edges that share the gap.
+          const yA = a.y + NH * 0.75, yB = b.y + NH * 0.75, mx = (a.x + b.x + NW) / 2;
+          const [p0, p1, p2, p3] = forward
+            ? [[a.x + NW, a.y + NH/2], [(a.x + NW + b.x)/2, a.y + NH/2], [(a.x + NW + b.x)/2, b.y + NH/2], [b.x, b.y + NH/2]]
+            : b.x === a.x
+            ? [[a.x + NW, a.y + NH/2], [a.x + NW + 40, a.y + NH/2], [b.x + NW + 40, b.y + NH/2], [b.x + NW, b.y + NH/2]]
+            : [[a.x, yA], [mx, yA + DIP], [mx, yB + DIP], [b.x + NW, yB]];
+          // Tag at the curve's middle; a backward edge tags near its target so it
+          // stays clear of the forward tags sharing the same gap.
+          const t = forward || b.x === a.x ? 0.5 : 0.8;
+          const bez = (i) => (1-t)**3 * p0[i] + 3*(1-t)**2*t * p1[i] + 3*(1-t)*t*t * p2[i] + t**3 * p3[i];
+          const tx = bez(0), ty = bez(1);
+          const ang = Math.atan2(p3[1] - p2[1], p3[0] - p2[0]) * 180 / Math.PI;
           return (
-            <button key={t.id} onClick={()=>setTool(t.id)} title={t.hint}
-              style={{
-                flex:1, padding:'8px 4px',
-                background: isSel ? 'linear-gradient(180deg, var(--abyss-3), var(--abyss-2))' : 'var(--abyss-1)',
-                border:`1px solid ${isSel ? t.color : 'var(--abyss-4)'}`,
-                borderTop:`3px solid ${isSel ? t.color : 'var(--abyss-4)'}`,
-                color: isSel ? t.color : 'var(--bone-dim)', textAlign:'center',
-              }}>
-              <div style={{ fontFamily:'Cinzel, serif', fontSize:17, lineHeight:1 }}>{t.glyph}</div>
-              <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.12em',
-                marginTop:4, textTransform:'uppercase' }}>{t.label}</div>
-            </button>
+            <g key={rt.id}>
+              <path d={`M ${p0[0]} ${p0[1]} C ${p1[0]} ${p1[1]}, ${p2[0]} ${p2[1]}, ${p3[0]} ${p3[1]}`}
+                fill="none" stroke="var(--brass-dim)" strokeWidth="1.2" opacity="0.85"
+                strokeDasharray={forward ? 'none' : '4 3'}/>
+              <path d="M -7 -4 L 0 0 L -7 4 Z" fill="var(--brass-dim)"
+                transform={`translate(${p3[0]} ${p3[1]}) rotate(${ang})`}/>
+              <circle cx={tx} cy={ty} r="8" fill="var(--abyss-0)" stroke="var(--abyss-4)" strokeWidth="0.8"/>
+              <text x={tx} y={ty + 3} textAnchor="middle" fontFamily="JetBrains Mono, monospace"
+                fontSize="8.5" fill="var(--brass)">{forgeRouteBadge(boardsById[s.boardId], rt)}</text>
+            </g>
+          );
+        }))}
+        {/* nodes */}
+        {stages.map((s, i) => {
+          const p = pos[s.id];
+          const isSel = s.id === selId;
+          const b = boardsById[s.boardId];
+          const obj = b ? FORGE_OBJECTIVES.find(o => o.id === b.objective) : null;
+          return (
+            <g key={s.id} transform={`translate(${p.x} ${p.y})`} style={{ cursor:'pointer' }}
+              onClick={()=>onSelect(s.id)}>
+              <rect width={NW} height={NH} fill={isSel ? 'oklch(0.26 0.05 188)' : 'var(--abyss-2)'}
+                stroke={isSel ? 'var(--brass)' : !b ? 'oklch(0.6 0.12 30)' : i === 0 ? 'var(--bio-dim)' : 'var(--abyss-4)'}
+                strokeWidth="1.2"/>
+              <text x="10" y="18" fontFamily="Cinzel, serif" fontSize="13"
+                fill={isSel ? 'var(--brass)' : 'var(--bone)'}>{clip(s.label, 14)}</text>
+              {obj && <text x={NW - 9} y="18" textAnchor="end" fontFamily="Cinzel, serif" fontSize="12"
+                fill="var(--brass)">{obj.glyph}</text>}
+              <text x="10" y="33" fontFamily="JetBrains Mono, monospace" fontSize="8.5"
+                fill={b ? 'var(--bone-dim)' : 'oklch(0.75 0.1 30)'}>
+                {b ? clip(b.name, 24) : '⚠ NO BOARD'}
+              </text>
+              {b && <text x="10" y="45" fontFamily="JetBrains Mono, monospace" fontSize="7.5"
+                fill="var(--bio-dim)" letterSpacing="0.1em">{b.size} · {b.w}×{b.h} · W{b.lineupW}</text>}
+              {i === 0 && <text x="0" y="-6" fontFamily="JetBrains Mono, monospace"
+                fontSize="7" fill="var(--bio-dim)" letterSpacing="0.2em">◈ ENTRY</text>}
+            </g>
           );
         })}
-      </div>
-
-      {/* hint / sub-palette row */}
-      {isCreatureTool ? (
-        <div style={{ display:'flex', gap:5, marginTop:8, flexWrap:'wrap' }}>
-          {creatures.map(a => {
-            const isSel = creatureVal === a.key;
-            return (
-              <button key={a.key} onClick={()=>setCreatureVal(a.key)} title={`${a.name} — ${a.role}`}
-                style={{
-                  flex:'1 1 96px', padding:'6px 6px', display:'flex', alignItems:'center', gap:7,
-                  background: isSel ? 'var(--abyss-3)' : 'var(--abyss-1)',
-                  border:`1px solid ${isSel ? creatureAccent : 'var(--abyss-4)'}`,
-                  color: isSel ? creatureAccent : 'var(--bone-dim)', textAlign:'left',
-                }}>
-                <span style={{ fontFamily:'Cinzel, serif', fontSize:18, lineHeight:1, color:a.color }}>{a.glyph}</span>
-                <span style={{ minWidth:0 }}>
-                  <span style={{ display:'block', fontFamily:'Cinzel, serif', fontSize:10.5,
-                    color: isSel ? 'var(--bone)' : 'var(--bone-dim)', whiteSpace:'nowrap',
-                    overflow:'hidden', textOverflow:'ellipsis' }}>{a.name}</span>
-                  <span style={{ display:'block', fontFamily:'JetBrains Mono, monospace', fontSize:7.5,
-                    letterSpacing:'0.15em', textTransform:'uppercase' }}>{a.role}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : tool === 'terrain' ? (
-        <div style={{ marginTop:8 }}>
-          {/* pick the side first */}
-          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
-            <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
-              letterSpacing:'0.2em', textTransform:'uppercase' }}>Side</span>
-            <div style={{ display:'flex', gap:5 }}>
-              {FORGE_SIDES.map(sd => {
-                const isSel = terrainSide === sd.id;
-                return (
-                  <button key={sd.id} onClick={()=>setTerrainSide(sd.id)} title={`${sd.label} formation`}
-                    style={{
-                      padding:'4px 14px', display:'flex', alignItems:'center', gap:6,
-                      background: isSel ? 'var(--abyss-3)' : 'var(--abyss-1)',
-                      border:`1px solid ${isSel ? sd.color : 'var(--abyss-4)'}`,
-                      borderLeft:`3px solid ${isSel ? sd.color : 'var(--abyss-4)'}`,
-                      color: isSel ? sd.color : 'var(--bone-dim)',
-                      fontFamily:'Cinzel, serif', fontSize:12, letterSpacing:'0.06em',
-                    }}>
-                    <span>{sd.glyph}</span>{sd.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {/* then the formation feature */}
-          <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
-            {FORGE_TERRAINS.map(t => {
-              const isSel = terrainType === t.id;
-              const sideColor = FORGE_SIDES.find(s=>s.id===terrainSide)?.color || t.color;
-              return (
-                <button key={t.id} onClick={()=>setTerrainType(t.id)} title={t.effect}
-                  style={{
-                    flex:'1 1 110px', padding:'6px 6px', display:'flex', alignItems:'center', gap:7,
-                    background: isSel ? 'var(--abyss-3)' : 'var(--abyss-1)',
-                    border:`1px solid ${isSel ? sideColor : 'var(--abyss-4)'}`,
-                    color: isSel ? t.color : 'var(--bone-dim)', textAlign:'left',
-                  }}>
-                  <span style={{ fontFamily:'Cinzel, serif', fontSize:17, lineHeight:1, color:t.color }}>{t.glyph}</span>
-                  <span style={{ minWidth:0 }}>
-                    <span style={{ display:'block', fontFamily:'Cinzel, serif', fontSize:10.5,
-                      color: isSel ? 'var(--bone)' : 'var(--bone-dim)' }}>{t.name}</span>
-                    <span style={{ display:'block', fontFamily:'Cormorant Garamond, serif', fontSize:9.5,
-                      fontStyle:'italic', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{t.effect}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : tool === 'props' ? (
-        <div style={{ display:'flex', gap:5, marginTop:8, flexWrap:'wrap' }}>
-          {FORGE_PROPS.map(p => {
-            const isSel = propType === p.id;
-            return (
-              <button key={p.id} onClick={()=>setPropType(p.id)} title={p.desc}
-                style={{
-                  flex:'1 1 110px', padding:'6px 6px', display:'flex', alignItems:'center', gap:7,
-                  background: isSel ? 'var(--abyss-3)' : 'var(--abyss-1)',
-                  border:`1px solid ${isSel ? p.color : 'var(--abyss-4)'}`,
-                  color: isSel ? p.color : 'var(--bone-dim)', textAlign:'left',
-                }}>
-                <span style={{ fontFamily:'Cinzel, serif', fontSize:17, lineHeight:1, color:p.color }}>{p.glyph}</span>
-                <span style={{ minWidth:0 }}>
-                  <span style={{ display:'block', fontFamily:'Cinzel, serif', fontSize:10.5,
-                    color: isSel ? 'var(--bone)' : 'var(--bone-dim)' }}>{p.name}</span>
-                  <span style={{ display:'block', fontFamily:'Cormorant Garamond, serif', fontSize:9.5,
-                    fontStyle:'italic', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.desc}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <div style={{ marginTop:8, minHeight:20, fontFamily:'Cormorant Garamond, serif', fontSize:12.5,
-          fontStyle:'italic', color:'var(--bone-dim)' }}>
-          {active?.hint}
-        </div>
-      )}
+      </svg>
     </div>
   );
 };
 
 // =============================================================================
-// BOARD PAINTER — click / drag paints with the active tool
+// STAGE BOARD PREVIEW — the selected stage's board, read-only, marks lettered
 // =============================================================================
-const ForgeBoard = ({ stage, tool, enemyType, allyType, terrainType, terrainSide, propType, onEdit }) => {
-  const { w, h } = stage;
-
-  // Fixed viewport: a 16×16-cell frame regardless of board size. Boards larger
-  // than the frame are reached by (1) wheel-zooming until they fit or
-  // (2) dragging the scrollbars that appear when the board overflows.
-  const FRAME_CELLS = 16, BASE_CELL = 34, FRAME_PX = FRAME_CELLS * BASE_CELL; // 544px
-  const [zoom, setZoom] = React.useState(1);
-  const frameRef = React.useRef(null);
-  const cell = Math.max(10, Math.round(BASE_CELL * zoom));
-  const clampZoom = (z) => Math.min(2, Math.max(0.3, z));
-  const fitZoom = () => setZoom(clampZoom(Math.min(1, FRAME_CELLS / w, FRAME_CELLS / h)));
-
-  // Wheel zoom — native listener so preventDefault works (React wheel is passive).
-  React.useEffect(() => {
-    const el = frameRef.current;
-    if (!el) return;
-    const onWheel = (e) => {
-      e.preventDefault();
-      setZoom(z => clampZoom(+(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1)).toFixed(3)));
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
-  // While the mouse is held, every entered cell receives the same add/remove
-  // mode that the first cell decided — prevents flicker while drag-painting.
-  const paint = React.useRef({ active:false, mode:'add' });
-
-  React.useEffect(() => {
-    const up = () => { paint.current.active = false; };
-    window.addEventListener('mouseup', up);
-    return () => window.removeEventListener('mouseup', up);
-  }, []);
-
-  const blocked = new Set(stage.blocked);
-  const deploy  = new Set(stage.deploy);
-  const maxZone = new Set(stage.maxZone);
-  const objSet  = new Set(stage.objCells);
-
-  // The live paint config lives in a ref so the two cell callbacks below can keep
-  // a STABLE identity. Stable callbacks + primitive props = React.memo actually
-  // holds, so painting one square re-renders one square instead of all w×h.
-  const cfg = React.useRef();
-  cfg.current = { tool, enemyType, allyType, terrainType, terrainSide, propType, stage, onEdit };
-
-  const applyTo = React.useCallback((key, mode) => {
-    const { tool, enemyType, allyType, terrainType, terrainSide, propType, onEdit } = cfg.current;
-    onEdit(cur => {
-      const has = (arr) => arr.includes(key);
-      const add = (arr) => has(arr) ? arr : [...arr, key];
-      const rem = (arr) => arr.filter(k => k !== key);
-      const dropKey = (m) => { const { [key]:_x, ...rest } = m; return rest; };
-      if (tool === 'erase') {
-        return { blocked:rem(cur.blocked), deploy:rem(cur.deploy), maxZone:rem(cur.maxZone),
-                 objCells:rem(cur.objCells), enemies:dropKey(cur.enemies),
-                 allies:dropKey(cur.allies || {}), terrain:dropKey(cur.terrain),
-                 props:dropKey(cur.props || {}) };
-      }
-      if (tool === 'blocked') {
-        if (mode === 'rem') return { blocked: rem(cur.blocked) };
-        // blocking a square sweeps everything else off it
-        return { blocked:add(cur.blocked), deploy:rem(cur.deploy), maxZone:rem(cur.maxZone),
-                 objCells:rem(cur.objCells), enemies:dropKey(cur.enemies),
-                 allies:dropKey(cur.allies || {}), terrain:dropKey(cur.terrain),
-                 props:dropKey(cur.props || {}) };
-      }
-      if (cur.blocked.includes(key)) return {};          // can't paint onto blocked
-      if (tool === 'deploy')    return { deploy:    mode==='add' ? add(cur.deploy)   : rem(cur.deploy) };
-      if (tool === 'max')       return { maxZone:   mode==='add' ? add(cur.maxZone)  : rem(cur.maxZone) };
-      if (tool === 'objective') return { objCells:  mode==='add' ? add(cur.objCells) : rem(cur.objCells) };
-      if (tool === 'enemy') {
-        if (mode === 'rem') return { enemies: dropKey(cur.enemies) };
-        // one occupant per square — placing an enemy evicts any ally
-        return { enemies: { ...cur.enemies, [key]: enemyType }, allies: dropKey(cur.allies || {}) };
-      }
-      if (tool === 'ally') {
-        if (mode === 'rem') return { allies: dropKey(cur.allies || {}) };
-        return { allies: { ...(cur.allies || {}), [key]: allyType }, enemies: dropKey(cur.enemies) };
-      }
-      if (tool === 'terrain') {
-        if (mode === 'rem') return { terrain: dropKey(cur.terrain) };
-        return { terrain: { ...cur.terrain, [key]: { type: terrainType, side: terrainSide } } };
-      }
-      if (tool === 'props') {
-        if (mode === 'rem') return { props: dropKey(cur.props || {}) };
-        return { props: { ...(cur.props || {}), [key]: propType } };
-      }
-      return {};
-    });
-  }, []);
-
-  // Decide add vs remove from the first cell pressed.
-  const modeFor = React.useCallback((key) => {
-    const { tool, enemyType, allyType, terrainType, terrainSide, propType, stage } = cfg.current;
-    if (tool === 'blocked')   return stage.blocked.includes(key)  ? 'rem' : 'add';
-    if (tool === 'deploy')    return stage.deploy.includes(key)   ? 'rem' : 'add';
-    if (tool === 'max')       return stage.maxZone.includes(key)  ? 'rem' : 'add';
-    if (tool === 'objective') return stage.objCells.includes(key) ? 'rem' : 'add';
-    if (tool === 'enemy')     return stage.enemies[key] === enemyType   ? 'rem' : 'add';
-    if (tool === 'ally')      return (stage.allies || {})[key] === allyType ? 'rem' : 'add';
-    if (tool === 'terrain')   { const t = forgeFormationVal(stage.terrain[key]); return (t && t.type === terrainType && t.side === terrainSide) ? 'rem' : 'add'; }
-    if (tool === 'props')     return (stage.props || {})[key] === propType ? 'rem' : 'add';
-    return 'add';
-  }, []);
-
-  const onDown = React.useCallback((key, e) => {
-    e.preventDefault();
-    paint.current = { active:true, mode: modeFor(key) };
-    applyTo(key, paint.current.mode);
-  }, [applyTo, modeFor]);
-  const onEnter = React.useCallback((key) => {
-    if (paint.current.active) applyTo(key, paint.current.mode);
-  }, [applyTo]);
-
-  const cells = [];
-  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) cells.push(`${r}-${c}`);
-
-  const zoomBtn = {
-    width:26, height:26, padding:0, background:'var(--abyss-1)',
-    border:'1px solid var(--abyss-4)', color:'var(--bone)',
-    fontFamily:'JetBrains Mono, monospace', fontSize:13, lineHeight:1,
-  };
-
+const ForgeStageBoardPreview = ({ stage, board }) => {
+  if (!board) {
+    return (
+      <div style={{ padding:'28px 16px', border:'1px dashed var(--abyss-4)', textAlign:'center',
+        fontFamily:'Cormorant Garamond, serif', fontSize:13.5, fontStyle:'italic', color:'var(--bone-dim)' }}>
+        Stage {stage.label} has no board yet — pick one from the campaign boards on the right.
+      </div>
+    );
+  }
+  const obj = FORGE_OBJECTIVES.find(o => o.id === board.objective);
   return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}>
-      {/* zoom bar */}
-      <div style={{ width: FRAME_PX + 20, display:'flex', alignItems:'center', gap:8 }}>
-        <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
+        <div className="caps">Board · {board.name}</div>
+        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
           letterSpacing:'0.15em' }}>
-          BOARD {w}×{h} · VIEW {FRAME_CELLS}×{FRAME_CELLS}
-        </span>
-        <div style={{ flex:1 }}/>
-        <button onClick={()=>setZoom(z=>clampZoom(+(z / 1.1).toFixed(3)))} title="Zoom out" style={zoomBtn}>−</button>
-        <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--brass)',
-          minWidth:44, textAlign:'center', letterSpacing:'0.05em' }}>
-          {Math.round(zoom * 100)}%
-        </span>
-        <button onClick={()=>setZoom(z=>clampZoom(+(z * 1.1).toFixed(3)))} title="Zoom in" style={zoomBtn}>+</button>
-        <button onClick={fitZoom} title="Fit the whole board into the frame"
-          style={{ ...zoomBtn, width:'auto', padding:'0 10px', fontSize:10, letterSpacing:'0.12em' }}>
-          ⊡ FIT
-        </button>
-      </div>
-
-      {/* fixed 16×16-cell viewport — wheel zooms, scrollbars pan */}
-      <div ref={frameRef}
-        title="Wheel · zoom in/out — scrollbars · pan"
-        style={{
-          width: FRAME_PX + 20, height: FRAME_PX + 20, overflow:'auto', display:'flex',
-          border:'1px solid var(--brass-deep)', background:'var(--abyss-0)',
-          boxShadow:'0 12px 40px rgba(0,0,0,0.7), inset 0 0 30px rgba(0,0,0,0.6)',
-        }}>
-        <div style={{ margin:'auto', padding:10 }}>
-          <div style={{
-            display:'inline-grid',
-            gridTemplateColumns:`repeat(${w}, ${cell}px)`,
-            gridTemplateRows:`repeat(${h}, ${cell}px)`,
-            border:'1px solid var(--brass-deep)',
-            background:'var(--abyss-1)', userSelect:'none',
-          }}>
-      {cells.map(key => {
-        // Only PRIMITIVES cross this boundary, so React.memo on ForgeCell can
-        // bail out for every square the stroke did not touch.
-        const fmVal = stage.terrain[key] ? forgeFormationVal(stage.terrain[key]) : null;
-        return (
-          <ForgeCell key={key} ck={key} cell={cell} w={w} h={h}
-            isBlocked={blocked.has(key)}
-            inDeploy={deploy.has(key)}
-            inMax={maxZone.has(key)}
-            mark={objSet.has(key) ? forgeMarkLetter(stage, key) : null}
-            enemyKey={stage.enemies[key] || null}
-            allyKey={(stage.allies || {})[key] || null}
-            propId={(stage.props || {})[key] || null}
-            terrType={fmVal ? fmVal.type : null}
-            terrSide={fmVal ? fmVal.side : null}
-            onDown={onDown} onEnter={onEnter}/>
-        );
-      })}
-          </div>
+          {obj?.glyph} {obj?.name.toUpperCase()} · {board.size} {board.w}×{board.h} · LINEUP W{board.lineupW}
         </div>
+      </div>
+      <div style={{ display:'flex', justifyContent:'center', padding:14, background:'var(--abyss-0)',
+        border:'1px solid var(--abyss-3)' }}>
+        <ForgeBoardThumb board={board} box={420} maxCell={34}/>
+      </div>
+      <div style={{ marginTop:6, fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
+        letterSpacing:'0.15em', textAlign:'center' }}>
+        <span style={{ color:'var(--bio)' }}>▪ DEPLOY</span> · <span style={{ color:'var(--brass)' }}>⚑ MARK</span> ·
+        {' '}<span style={{ color:'var(--coral)' }}>▁ ENEMY</span> · <span style={{ color:'var(--bio)' }}>▁ ALLY</span> ·
+        {' '}EDIT THE BOARD ITSELF IN THE BOARD EDITOR
       </div>
     </div>
   );
 };
 
-// One square. Memoised on primitive props — a stroke re-renders only the squares
-// it actually changed, instead of every square on the board.
-const ForgeCell = React.memo(({ ck, cell, w, h, isBlocked, inDeploy, inMax, mark,
-  enemyKey, allyKey, propId, terrType, terrSide, onDown, onEnter }) => {
-  const [r, c] = ck.split('-').map(Number);
-  const dark = (r + c) % 2 === 1;
-  const enemyArch = enemyKey ? FOLLOWER_ARCHETYPES[enemyKey] : null;
-  const allyArch  = allyKey  ? FOLLOWER_ARCHETYPES[allyKey]  : null;
-  const creature  = enemyArch || allyArch;
-  const prop   = propId   ? FORGE_PROPS.find(p => p.id === propId)   : null;
-  const terr   = terrType ? FORGE_TERRAINS.find(t => t.id === terrType) : null;
-  const fmSide = terrSide ? FORGE_SIDES.find(s => s.id === terrSide) : null;
-  const badge = Math.max(13, Math.round(cell*0.36));
-  const badgeFont = Math.max(9, Math.round(cell*0.24));
-
-  return (
-    <div
-      onMouseDown={(e)=>onDown(ck, e)}
-      onMouseEnter={()=>onEnter(ck)}
-      title={[
-        ck,
-        isBlocked && 'blocked', inDeploy && 'deploy', inMax && 'max zone',
-        mark && `mark ${mark}`,
-        enemyArch && `${enemyArch.name} · enemy`,
-        allyArch && `${allyArch.name} · ally`,
-        terr && `${fmSide?.label || ''} ${terr.name} — ${terr.effect}`,
-        prop && `${prop.name} — ${prop.desc}`,
-      ].filter(Boolean).join(' · ')}
-      style={{
-        width:cell, height:cell, position:'relative', cursor:'crosshair',
-        background: isBlocked
-          ? `repeating-linear-gradient(45deg, oklch(0.09 0.015 220) 0 6px, oklch(0.13 0.03 30) 6px 12px)`
-          : (dark ? 'oklch(0.14 0.02 220)' : 'oklch(0.22 0.03 220)'),
-        borderRight: c === w-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
-        borderBottom: r === h-1 ? 'none' : '1px solid oklch(0.08 0.01 220 / 0.5)',
-        display:'grid', placeItems:'center',
-      }}>
-      {/* formation — wash · top-right ribbon = SIDE · bottom-right badge = TYPE */}
-      {!isBlocked && terr && (
-        <>
-          <div style={{ position:'absolute', inset:0, pointerEvents:'none',
-            background:`${terr.color.replace(')',' / 0.16)')}` }}/>
-          {fmSide && (
-            <div style={{ position:'absolute', top:0, right:0, width:0, height:0, pointerEvents:'none',
-              borderTop:`${Math.max(9, Math.round(cell*0.32))}px solid ${fmSide.color}`,
-              borderLeft:`${Math.max(9, Math.round(cell*0.32))}px solid transparent`, opacity:0.95 }}/>
-          )}
-          <div style={{ position:'absolute', bottom:1, right:1, pointerEvents:'none',
-            minWidth:badge, height:badge, display:'grid', placeItems:'center', padding:'0 1px',
-            background:'rgba(0,8,12,0.75)', border:`1px solid ${terr.color}`,
-            fontFamily:'Cinzel, serif', fontSize:badgeFont, lineHeight:1,
-            color:terr.color }}>{terr.glyph}</div>
-        </>
-      )}
-      {!isBlocked && inMax && (
-        <div style={{ position:'absolute', inset:2, border:'1px dashed var(--bio-dim)',
-          opacity:0.55, pointerEvents:'none' }}/>
-      )}
-      {!isBlocked && inDeploy && (
-        <div style={{ position:'absolute', inset:0, background:'oklch(0.82 0.16 188 / 0.14)',
-          pointerEvents:'none' }}/>
-      )}
-      {!isBlocked && mark && (
-        <div style={{ position:'absolute', top:1, left:1, pointerEvents:'none',
-          padding:'1px 3px', background:'rgba(0,8,12,0.75)', border:'1px solid var(--brass-deep)',
-          fontFamily:'JetBrains Mono, monospace', fontSize:Math.max(9, Math.round(cell*0.22)),
-          lineHeight:1, color:'var(--brass)' }}>
-          ⚑{mark}
-        </div>
-      )}
-      {/* prop — centred when the square is free, corner badge when occupied */}
-      {!isBlocked && prop && (
-        creature ? (
-          <div style={{ position:'absolute', bottom:1, left:1, pointerEvents:'none',
-            minWidth:badge, height:badge, display:'grid', placeItems:'center', padding:'0 1px',
-            background:'rgba(0,8,12,0.75)', border:`1px solid ${prop.color}`,
-            fontFamily:'Cinzel, serif', fontSize:badgeFont, lineHeight:1,
-            color:prop.color }}>{prop.glyph}</div>
-        ) : (
-          <div style={{ position:'absolute', inset:0, display:'grid', placeItems:'center',
-            pointerEvents:'none' }}>
-            <span style={{ fontFamily:'Cinzel, serif', fontSize:cell*0.46, lineHeight:1,
-              color:prop.color, opacity:0.8 }}>{prop.glyph}</span>
-          </div>
-        )
-      )}
-      {/* creature — archetype colour = identity · underline = side */}
-      {!isBlocked && creature && (
-        <div style={{ position:'relative', pointerEvents:'none', textAlign:'center', lineHeight:1 }}>
-          <div style={{ fontFamily:'Cinzel, serif', fontSize:cell*0.58, color:creature.color,
-            textShadow:`0 2px 4px rgba(0,0,0,0.85)` }}>
-            {creature.glyph}
-          </div>
-          <div style={{ height:Math.max(2, Math.round(cell*0.05)), margin:'1px auto 0', width:'68%',
-            background: enemyArch ? 'var(--coral)' : 'var(--bio)' }}/>
-        </div>
-      )}
-    </div>
-  );
-});
-
 // =============================================================================
-// STAGE SETTINGS — right rail (label, size, objective, branch routes, census)
+// STAGE PANEL — right rail (label, board, branch routes)
 // =============================================================================
-const ForgeStageSettings = ({ stage, stages, onEdit }) => {
-  const obj = FORGE_OBJECTIVES.find(o => o.id === stage.objective);
+const ForgeStagePanel = ({ stage, stages, board, boardsById, campaignBoards, onEdit }) => {
   const others = stages.filter(s => s.id !== stage.id);
-  const [objOpen, setObjOpen] = React.useState(false);
-
-  // prune out-of-range cells when the board shrinks
-  const resize = (dw, dh) => {
-    const w = Math.max(4, Math.min(24, stage.w + dw));
-    const h = Math.max(4, Math.min(24, stage.h + dh));
-    const fits = (key) => { const [r,c] = key.split('-').map(Number); return r < h && c < w; };
-    const fitMap = (m) => Object.fromEntries(Object.entries(m).filter(([k]) => fits(k)));
-    onEdit(cur => ({
-      w, h,
-      blocked: cur.blocked.filter(fits), deploy: cur.deploy.filter(fits),
-      maxZone: cur.maxZone.filter(fits), objCells: cur.objCells.filter(fits),
-      enemies: fitMap(cur.enemies), allies: fitMap(cur.allies || {}), terrain: fitMap(cur.terrain),
-      props: fitMap(cur.props || {}),
-    }));
-  };
-
-  // --- rewards ---
-  const rewards = { ...forgeEmptyRewards(), ...(stage.rewards || {}) };
-  const setReward = (k, v) => onEdit(cur => ({
-    rewards: { ...forgeEmptyRewards(), ...(cur.rewards || {}), [k]: v },
-  }));
-  const addDrop = (k, id) => { if (id) setReward(k, [...rewards[k], id]); };
-  const removeDrop = (k, idx) => setReward(k, rewards[k].filter((_, i) => i !== idx));
-  const dropCount = rewards.relics.length + rewards.augs.length + rewards.units.length + rewards.quest.length;
+  const marks = board?.objCells || [];
 
   // --- branch routes ---
   const addRoute = () => onEdit(cur => ({
@@ -1219,40 +727,31 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
 
   const whenOptions = [
     { value:'complete', label:'✓ Objective complete' },
-    ...stage.objCells.map((k, i) => ({ value:k, label:`⚑ At mark ${String.fromCharCode(65+i)} (${k})` })),
+    ...marks.map((k, i) => ({ value:k, label:`⚑ At mark ${String.fromCharCode(65+i)} (${k})` })),
     { value:'custom', label:'✎ Custom condition…' },
   ];
+  const isStale = (rt) => rt.when !== 'complete' && rt.when !== 'custom' && !marks.includes(rt.when);
 
   const warnings = [];
-  if (obj?.needsCells && stage.objCells.length === 0) warnings.push('Objective needs ⚑ marks painted.');
-  if (obj?.needsEnemies && Object.keys(stage.enemies).length === 0) warnings.push(`${obj.name} needs enemy creatures placed.`);
-  const deployOutsideMax = stage.deploy.filter(k => !stage.maxZone.includes(k)).length;
-  if (stage.maxZone.length > 0 && deployOutsideMax > 0) warnings.push(`${deployOutsideMax} deploy cell(s) outside the max zone.`);
+  if (!stage.boardId) warnings.push('No board chosen for this stage.');
+  else if (!board) warnings.push('Its board was deleted in the Board Editor.');
+  else if (!board.inCampaign) warnings.push('Its board is no longer tagged “Appear on Campaign”.');
   const routesNoTarget = stage.routes.filter(rt => !rt.target || !stages.find(s=>s.id===rt.target)).length;
   if (routesNoTarget > 0) warnings.push(`${routesNoTarget} route(s) missing a target stage.`);
-  const routesStaleMark = stage.routes.filter(rt => rt.when !== 'complete' && rt.when !== 'custom' && !stage.objCells.includes(rt.when)).length;
-  if (routesStaleMark > 0) warnings.push(`${routesStaleMark} route(s) bound to an erased mark.`);
+  const routesStaleMark = stage.routes.filter(isStale).length;
+  if (routesStaleMark > 0) warnings.push(`${routesStaleMark} route(s) bound to a mark this board does not have.`);
 
   const selStyle = {
     width:'100%', padding:'6px 8px', background:'var(--abyss-0)',
     border:'1px solid var(--abyss-4)', color:'var(--bone)',
     fontFamily:'JetBrains Mono, monospace', fontSize:10, letterSpacing:'0.06em', outline:'none',
   };
-
-  const Stepper = ({ label, value, onMinus, onPlus }) => (
-    <div style={{ flex:1 }}>
-      <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
-        letterSpacing:'0.2em', marginBottom:4, textTransform:'uppercase' }}>{label}</div>
-      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-        <button onClick={onMinus} style={{ width:26, height:26, padding:0, background:'var(--abyss-1)',
-          border:'1px solid var(--abyss-4)', color:'var(--bone)', fontFamily:'JetBrains Mono, monospace' }}>−</button>
-        <span style={{ fontFamily:'Cinzel, serif', fontSize:18, color:'var(--brass)', minWidth:26,
-          textAlign:'center' }}>{value}</span>
-        <button onClick={onPlus} style={{ width:26, height:26, padding:0, background:'var(--abyss-1)',
-          border:'1px solid var(--abyss-4)', color:'var(--bone)', fontFamily:'JetBrains Mono, monospace' }}>+</button>
-      </div>
-    </div>
-  );
+  const boardOption = (b) => {
+    const obj = FORGE_OBJECTIVES.find(o => o.id === b.objective);
+    return `${obj?.glyph || ''} ${b.name} · ${b.size} ${b.w}×${b.h}`;
+  };
+  // The current board stays listed even when it has left the campaign list.
+  const offList = stage.boardId && !campaignBoards.some(b => b.id === stage.boardId);
 
   return (
     <div style={{ borderLeft:'1px solid var(--abyss-4)', overflowY:'auto', padding:'16px 14px',
@@ -1269,61 +768,38 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
       </div>
 
       <div>
-        <div className="caps" style={{ marginBottom:6 }}>Board Size</div>
-        <div style={{ display:'flex', gap:14 }}>
-          <Stepper label="Width"  value={stage.w} onMinus={()=>resize(-1,0)} onPlus={()=>resize(1,0)}/>
-          <Stepper label="Height" value={stage.h} onMinus={()=>resize(0,-1)} onPlus={()=>resize(0,1)}/>
-        </div>
-      </div>
-
-      <div>
-        <div className="caps" style={{ marginBottom:6 }}>Objective</div>
-        {/* single bar — click to drop the full list open */}
-        <button onClick={()=>setObjOpen(v=>!v)} title="Choose objective"
-          style={{
-            width:'100%', padding:'8px 10px', textAlign:'left',
-            background:'linear-gradient(90deg, var(--abyss-3), var(--abyss-2))',
-            border:'1px solid var(--brass)', borderLeft:'3px solid var(--brass)',
-            color:'var(--bone)', display:'flex', gap:8, alignItems:'center',
-          }}>
-          <span style={{ fontFamily:'Cinzel, serif', fontSize:15, color:'var(--brass)', width:18 }}>{obj?.glyph}</span>
-          <span style={{ flex:1, fontFamily:'Cinzel, serif', fontSize:12.5, letterSpacing:'0.04em' }}>{obj?.name}</span>
-          <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, color:'var(--bone-dim)' }}>
-            {objOpen ? '▴' : '▾'}
-          </span>
-        </button>
-        {objOpen && (
-          <div style={{ display:'flex', flexDirection:'column', gap:4, marginTop:4,
-            padding:6, background:'var(--abyss-0)', border:'1px solid var(--abyss-4)' }}>
-            {FORGE_OBJECTIVES.map(o => {
-              const isSel = stage.objective === o.id;
-              return (
-                <button key={o.id} onClick={()=>{ onEdit(()=>({ objective:o.id })); setObjOpen(false); }}
-                  style={{
-                    padding:'6px 9px', textAlign:'left',
-                    background: isSel ? 'var(--abyss-3)' : 'transparent',
-                    border:'1px solid', borderColor: isSel ? 'var(--brass)' : 'transparent',
-                    color:'var(--bone)', display:'flex', gap:8, alignItems:'baseline',
-                  }}>
-                  <span style={{ fontFamily:'Cinzel, serif', fontSize:13, color: isSel ? 'var(--brass)' : 'var(--bone-dim)', width:18 }}>{o.glyph}</span>
-                  <span style={{ flex:1 }}>
-                    <span style={{ fontFamily:'Cinzel, serif', fontSize:11.5, letterSpacing:'0.04em' }}>{o.name}</span>
-                    <span style={{ display:'block', fontFamily:'Cormorant Garamond, serif', fontSize:10.5,
-                      fontStyle:'italic', color:'var(--bone-dim)', marginTop:1 }}>{o.desc}</span>
-                  </span>
-                  {isSel && <span style={{ color:'var(--brass)', fontSize:10 }}>◆</span>}
-                </button>
-              );
-            })}
+        <div className="caps" style={{ marginBottom:6 }}>Board</div>
+        <select value={stage.boardId || ''} title="Board this stage plays on"
+          onChange={e=>onEdit(()=>({ boardId: e.target.value || null }))}
+          style={{ ...selStyle, fontSize:10.5, padding:'7px 8px' }}>
+          <option value="">— choose board —</option>
+          {offList && (
+            <option value={stage.boardId}>
+              ⚠ {board ? `${board.name} (off campaign)` : 'deleted board'}
+            </option>
+          )}
+          {campaignBoards.map(b => <option key={b.id} value={b.id}>{boardOption(b)}</option>)}
+        </select>
+        {campaignBoards.length === 0 && (
+          <div style={{ marginTop:5, fontFamily:'JetBrains Mono, monospace', fontSize:8.5,
+            color:'var(--bone-dim)', letterSpacing:'0.12em', lineHeight:1.6 }}>
+            ‣ NO BOARD IS TAGGED FOR THE CAMPAIGN — SET “APPEAR ON CAMPAIGN” IN THE BOARD EDITOR
           </div>
         )}
-        {obj?.turns && (
-          <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:8 }}>
-            <input type="range" min={5} max={60} step={5} value={stage.turns} title="Turns to hold"
-              onChange={e=>onEdit(()=>({ turns:Number(e.target.value) }))}
-              style={{ flex:1, accentColor:'var(--bio)' }}/>
-            <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:12, color:'var(--brass)',
-              minWidth:64, textAlign:'right' }}>HOLD {stage.turns}</span>
+        {board && (
+          <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:3 }}>
+            {[
+              ['Size',    `${forgeSizeById(board.size).label} · ${board.w}×${board.h}`],
+              ['Lineup',  `W${board.lineupW}`],
+              ['Objective', FORGE_OBJECTIVES.find(o => o.id === board.objective)?.name],
+              ['Marks',   marks.length ? marks.map((_, i) => String.fromCharCode(65 + i)).join(' ') : '—'],
+            ].map(([k, v]) => (
+              <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'3px 2px',
+                borderBottom:'1px dashed var(--abyss-3)', fontFamily:'JetBrains Mono, monospace', fontSize:9.5 }}>
+                <span style={{ color:'var(--bone-dim)', letterSpacing:'0.15em', textTransform:'uppercase' }}>{k}</span>
+                <span style={{ color:'var(--bone)' }}>{v}</span>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -1342,7 +818,7 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
 
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
           {stage.routes.map(rt => {
-            const staleMark = rt.when !== 'complete' && rt.when !== 'custom' && !stage.objCells.includes(rt.when);
+            const staleMark = isStale(rt);
             return (
               <div key={rt.id} style={{ padding:'8px 9px', background:'var(--abyss-1)',
                 border:`1px solid ${staleMark ? 'oklch(0.5 0.12 30)' : 'var(--abyss-3)'}`,
@@ -1350,7 +826,7 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
                 <select value={rt.when} title="Route condition"
                   onChange={e=>editRoute(rt.id, { when:e.target.value })}
                   style={selStyle}>
-                  {staleMark && <option value={rt.when}>⚠ erased mark ({rt.when})</option>}
+                  {staleMark && <option value={rt.when}>⚠ missing mark ({rt.when})</option>}
                   {whenOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
                 {rt.when === 'custom' && (
@@ -1364,7 +840,10 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
                     onChange={e=>editRoute(rt.id, { target:e.target.value || null })}
                     style={{ ...selStyle, flex:1 }}>
                     <option value="">— choose stage —</option>
-                    {others.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                    {others.map(s => {
+                      const tb = boardsById[s.boardId];
+                      return <option key={s.id} value={s.id}>{s.label}{tb ? ` · ${tb.name}` : ''}</option>;
+                    })}
                   </select>
                   <button onClick={()=>removeRoute(rt.id)} title="Remove route"
                     style={{ width:24, height:24, padding:0, background:'transparent',
@@ -1383,151 +862,6 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
         </div>
       </div>
 
-      {/* === REWARDS · ON CLEAR === */}
-      <div>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
-          <div className="caps">Rewards · On Clear</div>
-          <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5,
-            color:'var(--bio-dim)', letterSpacing:'0.15em' }}>{dropCount} DROP{dropCount===1?'':'S'}</span>
-        </div>
-
-        {/* resources */}
-        <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:8 }}>
-          {[
-            { k:'coral', glyph:'◎', label:'Refined Coral', color:'oklch(0.72 0.12 35)' },
-            { k:'dna',   glyph:'✧', label:'DNA',           color:'oklch(0.72 0.14 150)' },
-            { k:'lumin', glyph:'◆', label:'Lumin',         color:'oklch(0.75 0.13 195)' },
-          ].map(res => (
-            <div key={res.k} style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <span style={{ fontFamily:'Cinzel, serif', fontSize:14, color:res.color, width:16,
-                textAlign:'center' }}>{res.glyph}</span>
-              <span style={{ flex:1, fontFamily:'JetBrains Mono, monospace', fontSize:9,
-                letterSpacing:'0.16em', color:'var(--bone-dim)', textTransform:'uppercase' }}>{res.label}</span>
-              <input type="number" min={0} step={5} value={rewards[res.k]}
-                title={`${res.label} reward`}
-                onChange={e=>setReward(res.k, Math.max(0, Number(e.target.value) || 0))}
-                style={{ ...selStyle, width:72, flex:'0 0 72px', textAlign:'right',
-                  color: rewards[res.k] > 0 ? 'var(--bone)' : 'var(--bone-dim)' }}/>
-            </div>
-          ))}
-        </div>
-
-        {/* item drops — chips with remove */}
-        {dropCount > 0 && (
-          <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:8 }}>
-            {rewards.relics.map((id, i) => {
-              const r = OP_RELICS.find(x => x.id === id);
-              return (
-                <span key={`r${i}`} title={r?.desc}
-                  style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 7px',
-                    background:'var(--abyss-1)', border:'1px solid var(--brass-deep)',
-                    fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--brass)',
-                    letterSpacing:'0.08em' }}>
-                  {r?.glyph} {r?.name || id}
-                  <button onClick={()=>removeDrop('relics', i)} title="Remove"
-                    style={{ background:'transparent', border:'none', color:'var(--bone-dim)',
-                      cursor:'pointer', fontSize:10, padding:'0 1px', lineHeight:1 }}>×</button>
-                </span>
-              );
-            })}
-            {rewards.augs.map((id, i) => {
-              const a = AUGMENTATIONS.find(x => x.id === id);
-              const slot = a ? AUG_SLOTS.find(s => s.id === a.slot) : null;
-              return (
-                <span key={`a${i}`} title={a?.effect}
-                  style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 7px',
-                    background:'var(--abyss-1)', border:`1px solid ${slot?.color || 'var(--abyss-4)'}`,
-                    fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:slot?.color || 'var(--bone)',
-                    letterSpacing:'0.08em' }}>
-                  {slot?.glyph} {a?.name || id}
-                  <button onClick={()=>removeDrop('augs', i)} title="Remove"
-                    style={{ background:'transparent', border:'none', color:'var(--bone-dim)',
-                      cursor:'pointer', fontSize:10, padding:'0 1px', lineHeight:1 }}>×</button>
-                </span>
-              );
-            })}
-            {rewards.units.map((k, i) => {
-              const a = FOLLOWER_ARCHETYPES[k];
-              return (
-                <span key={`u${i}`} title={a?.desc}
-                  style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 7px',
-                    background:'var(--abyss-1)', border:`1px solid ${a?.color || 'var(--abyss-4)'}`,
-                    fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:a?.color || 'var(--bone)',
-                    letterSpacing:'0.08em' }}>
-                  {a?.glyph} {a?.name || k}
-                  <button onClick={()=>removeDrop('units', i)} title="Remove"
-                    style={{ background:'transparent', border:'none', color:'var(--bone-dim)',
-                      cursor:'pointer', fontSize:10, padding:'0 1px', lineHeight:1 }}>×</button>
-                </span>
-              );
-            })}
-            {rewards.quest.map((id, i) => {
-              const q = QUEST_ITEMS.find(x => x.id === id);
-              return (
-                <span key={`q${i}`} title={q?.desc}
-                  style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 7px',
-                    background:'var(--abyss-1)', border:'1px solid oklch(0.4 0.1 290 / 0.6)',
-                    fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'oklch(0.7 0.13 290)',
-                    letterSpacing:'0.08em' }}>
-                  {q?.glyph || '◇'} {q?.name || id}
-                  <button onClick={()=>removeDrop('quest', i)} title="Remove"
-                    style={{ background:'transparent', border:'none', color:'var(--bone-dim)',
-                      cursor:'pointer', fontSize:10, padding:'0 1px', lineHeight:1 }}>×</button>
-                </span>
-              );
-            })}
-          </div>
-        )}
-
-        {/* add drops — pick from the game's pools (selects reset after adding) */}
-        <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-          <select value="" title="Add relic reward" style={selStyle}
-            onChange={e=>addDrop('relics', e.target.value)}>
-            <option value="">✠ + Relic reward…</option>
-            {OP_RELICS.map(r => <option key={r.id} value={r.id}>{r.glyph} {r.name} · T{r.tier}</option>)}
-          </select>
-          <select value="" title="Add augmentation reward" style={selStyle}
-            onChange={e=>addDrop('augs', e.target.value)}>
-            <option value="">⊕ + Augmentation reward…</option>
-            {AUGMENTATIONS.map(a => {
-              const slot = AUG_SLOTS.find(s => s.id === a.slot);
-              return <option key={a.id} value={a.id}>{slot?.glyph} {a.name} · {slot?.label} T{a.tier}</option>;
-            })}
-          </select>
-          <select value="" title="Add creature recruit reward" style={selStyle}
-            onChange={e=>addDrop('units', e.target.value)}>
-            <option value="">♙ + Creature recruit…</option>
-            {Object.values(FOLLOWER_ARCHETYPES).map(a =>
-              <option key={a.key} value={a.key}>{a.glyph} {a.name} · {a.role}</option>)}
-          </select>
-          <select value="" title="Add quest item reward" style={selStyle}
-            onChange={e=>addDrop('quest', e.target.value)}>
-            <option value="">◇ + Quest item…</option>
-            {QUEST_ITEMS.map(q => <option key={q.id} value={q.id}>{q.glyph} {q.name}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <div>
-        <div className="caps" style={{ marginBottom:6 }}>Census</div>
-        {[
-          ['Blocked',  stage.blocked.length],
-          ['Deploy',   stage.deploy.length],
-          ['Max Zone', stage.maxZone.length],
-          ['Marks',    stage.objCells.length],
-          ['Enemies',  Object.keys(stage.enemies).length],
-          ['Allies',   Object.keys(stage.allies || {}).length],
-          ['Formation', Object.keys(stage.terrain).length],
-          ['Props',    Object.keys(stage.props || {}).length],
-        ].map(([k,v]) => (
-          <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'4px 2px',
-            borderBottom:'1px dashed var(--abyss-3)', fontFamily:'JetBrains Mono, monospace', fontSize:9.5 }}>
-            <span style={{ color:'var(--bone-dim)', letterSpacing:'0.15em', textTransform:'uppercase' }}>{k}</span>
-            <span style={{ color: v>0 ? 'var(--bone)' : 'var(--bone-dim)' }}>{v}</span>
-          </div>
-        ))}
-      </div>
-
       {warnings.length > 0 && (
         <div style={{ padding:'10px 12px', background:'oklch(0.18 0.05 30 / 0.4)',
           border:'1px solid oklch(0.4 0.1 30 / 0.5)' }}>
@@ -1539,12 +873,8 @@ const ForgeStageSettings = ({ stage, stages, onEdit }) => {
       )}
 
       <div style={{ flex:1 }}/>
-      {/* placeholder — authoring autosaves; explicit save is not wired yet */}
-      <button className="btn primary sm" style={{ justifyContent:'center' }}>
-        ✓ Save Level
-      </button>
       <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, color:'var(--bone-dim)',
-        letterSpacing:'0.18em', textAlign:'center', marginTop:-8 }}>
+        letterSpacing:'0.18em', textAlign:'center' }}>
         ‣ AUTOSAVED TO LOCAL HOLD
       </div>
     </div>

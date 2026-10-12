@@ -100,6 +100,7 @@ const App = () => {
   return (
     <div style={{ position:'absolute', inset:0 }}>
       {screen === 'menu' && <MainMenu go={setScreen} setRun={setRun}/>}
+      {screen === 'board-editor' && <BoardEditor go={setScreen}/>}
       {screen === 'level-forge' && <LevelForge go={setScreen}/>}
       {screen === 'unit-editor' && <UnitEditor go={setScreen}/>}
       {screen === 'dialog-editor' && <DialogEditor go={setScreen}/>}
@@ -111,6 +112,7 @@ const App = () => {
       {screen === 'op-trader' && run && <Trader run={run} setRun={setRun} go={setScreen}/>}
       {screen === 'op-command' && run && <CommandChamber run={run} setRun={setRun} go={setScreen}/>}
       {screen === 'training-board' && run && <SparringField run={run} setRun={setRun} go={setScreen}/>}
+      {screen === 'gauntlet' && run && <Gauntlet run={run} setRun={setRun} go={setScreen}/>}
       {screen === 'pvp-setup' && run && <PvPSetup run={run} setRun={setRun} go={setScreen}/>}
 
       {/* Mission — world map & battles */}
@@ -132,6 +134,7 @@ const App = () => {
         <select value={screen} onChange={e=>setScreen(e.target.value)}
           style={{ background:'#000', color:'var(--bone-dim)', border:'1px solid var(--abyss-4)', fontSize:10, padding:'2px 6px', fontFamily:'JetBrains Mono, monospace' }}>
           <option value="menu">Menu</option>
+          <option value="board-editor">Board Editor</option>
           <option value="level-forge">Level Editor</option>
           <option value="unit-editor">Unit Editor</option>
           <option value="dialog-editor">Dialog Editor</option>
@@ -140,6 +143,7 @@ const App = () => {
           <option value="op-trader">Op · Trader</option>
           <option value="op-command">Op · Command</option>
           <option value="training-board">Training · Field</option>
+          <option value="gauntlet">Gauntlet</option>
           <option value="map">World Map</option>
           <option value="match">Match</option>
           <option value="gameover-win">Victory</option>

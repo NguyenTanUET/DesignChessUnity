@@ -1,4 +1,4 @@
-// Command Chamber — 4 sub-halls: Assignment · Reflection · Portal · Training Ground
+// Command Chamber — 5 sub-halls: Assignment · Reflection · Portal · Training Ground · Gauntlet
 const CommandChamber = ({ run, setRun, go }) => {
   // Honor a one-shot return tab (e.g. coming back from the Sparring Field), then
   // clear it so normal entry defaults to Assignment.
@@ -18,7 +18,7 @@ const CommandChamber = ({ run, setRun, go }) => {
         {subTab === 'reflection' && <ReflectionPanel run={run} setRun={setRun} go={go}/>}
         {subTab === 'portal'     && <PortalPanel     run={run} setRun={setRun} go={go}/>}
         {subTab === 'training'   && <TrainingPanel   run={run} setRun={setRun} go={go}/>}
-        {subTab === 'simulation' && <SimulationPanel run={run} setRun={setRun} go={go}/>}
+        {subTab === 'gauntlet'   && <GauntletPanel   run={run} setRun={setRun} go={go}/>}
       </div>
     </div>
   );
@@ -33,7 +33,7 @@ const CommandSubNav = ({ active, onChange }) => {
     { id:'reflection', label:'Reflection',      glyph:'◐', desc:'Separate hunts · seven mirrored modes' },
     { id:'portal',     label:'Portal',          glyph:'◉', desc:'Open the tide · match a distant sovereign' },
     { id:'training',   label:'Training Ground', glyph:'▦', desc:'Custom skirmish · build both sides' },
-    { id:'simulation', label:'Simulation',      glyph:'⛬', desc:'Linear ascent · destroy each commander' },
+    { id:'gauntlet',   label:'Gauntlet',        glyph:'⛬', desc:'Four boards · one lineup · no second chance' },
   ];
   return (
     <div style={{
@@ -96,16 +96,16 @@ const AssignmentPanel = ({ run, setRun, go }) => {
   const MAIN = OP_ASSIGNMENTS.filter(a => a.kind === 'main');
   const SIDE = OP_ASSIGNMENTS.filter(a => a.kind === 'side');
 
-  // Levels chained in the Level Editor, listed as assignments. A fork there
-  // (one level leading to two or more) makes its branches decision assignments.
+  // Missions chained in the Level Editor, listed as assignments. A fork there
+  // (one mission leading to two or more) makes its branches decision assignments.
   const CAMPAIGN = React.useMemo(() => {
-    let levels = [];
-    try { levels = JSON.parse(localStorage.getItem('gok.customLevels')) || []; } catch(e) {}
-    if (!window.forgeCampaign || !window.forgeLevelAsAssignment) return [];
+    if (!window.forgeLoadLibrary || !window.forgeCampaign || !window.forgeLevelAsAssignment) return [];
+    const { boards, levels } = window.forgeLoadLibrary();
+    const boardsById = Object.fromEntries(boards.map(b => [b.id, b]));
     const graph = window.forgeCampaign(levels);
     const nameOf = (id) => levels.find(l => l.id === id)?.name || '?';
     return levels
-      .map(l => ({ ...window.forgeLevelAsAssignment(l, graph[l.id]),
+      .map(l => ({ ...window.forgeLevelAsAssignment(l, graph[l.id], boardsById),
                    after: (graph[l.id]?.prev || []).map(nameOf) }))
       .sort((a, b) => a.depth - b.depth);
   }, []);
@@ -1860,251 +1860,253 @@ const MissionMapFrame = ({ assignment }) => {
 };
 
 // =============================================================================
-// PANEL 5 · SIMULATION — linear tower ascent. One objective on every floor:
-// Destroy Enemy Commander. ~50 floors, difficulty climbing with depth.
+// PANEL 5 · GAUNTLET — four boards from the Board Pool, one lineup, no second
+// chances. This panel arms the run; it is played on its own screen (Gauntlet.jsx).
 // =============================================================================
-const SIM_TOTAL_FLOORS = 50;
-
-const SIM_COMMANDERS = [
-  'Hollow Admiral', 'Brine Tyrant', 'Salt-Choir Maestro', 'Carrion Duke',
-  'Ossuary Warden', 'Pale Quartermaster', 'Iron Widow', 'Drowned Marshal',
-  'Reef-Bishop', 'Abyssal Steward', 'Gloom Castellan', 'Tideborn Sovereign',
-];
-const SIM_APEX = [
-  'THE FATHOM-KING', 'LEVIATHAN OF THE TENTH', 'THE UNDERTOW CROWN',
-  'MAW OF THE TRENCH', 'THE LAST LIGHTHOUSE-GOD',
-];
-
-// Per-floor descriptor — purely deterministic from the floor number.
-const simFloorMeta = (f) => {
-  const isApex  = f % 10 === 0;
-  const isElite = f % 5 === 0 && !isApex;
-  const tier = isApex ? 'apex' : isElite ? 'elite' : 'standard';
-  const name = isApex
-    ? SIM_APEX[(f/10 - 1) % SIM_APEX.length]
-    : SIM_COMMANDERS[(f - 1) % SIM_COMMANDERS.length];
-  const width = FORMATION_WIDTHS[f <= 10 ? 0 : f <= 25 ? 1 : 2];   // board grows with depth
-  const threat = Math.min(10, 1 + Math.floor((f - 1) / 5));
-  const accent = isApex ? 'var(--coral)' : isElite ? 'var(--void)' : 'var(--brass)';
-  return { f, tier, name, width, threat, accent, isApex, isElite };
-};
-
-const SimulationPanel = ({ run, setRun, go }) => {
-  const sim = run.simulation || { reached: 1, best: 0 };
-  const reached = Math.min(SIM_TOTAL_FLOORS, sim.reached || 1);
-  const best = sim.best || 0;
-  const [selected, setSelected] = React.useState(reached);
-  const currentRef = React.useRef(null);
-
-  // bring the current floor into view on entry
+const GauntletPanel = ({ run, setRun, go }) => {
+  const g = run.gauntlet;
+  const rec = run.gauntletRecord || { runs:0, completed:0, bestWins:0 };
+  const [width, setWidth] = React.useState(formationWidthUp(run.lineupWidth || DEFAULT_FORMATION_W));
+  const pools = React.useMemo(() => Object.fromEntries(FORMATION_WIDTHS.map(w => [w, gauntletPool(w)])), []);
+  const pool = pools[width] || [];
+  const eligibleFor = (w) => ((run.lineups || {})[w] || []).filter(ln => Object.keys(ln.board || {}).length > 0);
+  const eligible = eligibleFor(width);
+  const [lineupId, setLineupId] = React.useState(() => eligible[0]?.id || null);
   React.useEffect(() => {
-    if (currentRef.current) currentRef.current.scrollIntoView({ block:'center' });
+    setLineupId(eligibleFor(width)[0]?.id || null);
   // eslint-disable-next-line
-  }, []);
+  }, [width]);
+  const lineup = eligible.find(l => l.id === lineupId) || null;
+  const relic = lineup?.carryRelicId ? OP_RELICS.find(r => r.id === lineup.carryRelicId) : null;
+  const offers = gauntletOfferCounts(width);
+  const [confirmAbandon, setConfirmAbandon] = React.useState(false);
 
-  const meta = simFloorMeta(selected);
-  const status = (f) => f < reached ? 'cleared' : f === reached ? 'current' : 'locked';
-
-  // Lineup selection — must match the selected floor's required width (like Assignment).
-  const allLineups = run.lineups || {};
-  const reqWidth = meta.width;
-  const eligibleLineups = (allLineups[reqWidth] || []).filter(ln => Object.keys(ln.board || {}).length > 0);
-  const [selectedLineupId, setSelectedLineupId] = React.useState(null);
-  React.useEffect(() => {
-    const fresh = (allLineups[reqWidth] || []).filter(ln => Object.keys(ln.board || {}).length > 0);
-    setSelectedLineupId(fresh[0]?.id || null);
-  // eslint-disable-next-line
-  }, [reqWidth]);
-  const selectedLineup = eligibleLineups.find(l => l.id === selectedLineupId) || null;
-
-  const canBegin = selected <= reached && !!selectedLineup;
+  const canBegin = !g && !!lineup && pool.length > 0;
   const begin = () => {
     if (!canBegin) return;
-    // UI scaffolding — the live ascent is not wired to the match engine yet.
-    setRun(r => ({ ...r, simState: { floor: selected, lineupId: selectedLineupId, width: reqWidth } }));
+    setRun(r => ({ ...r, lineupWidth: width, gauntlet: gauntletStart(r, width, lineup) }));
+    go('gauntlet');
   };
-  const forge = () => { setRun(r => ({ ...r, lineupWidth: reqWidth })); go('op-lineup'); };
-  const resetRun = () => setRun(r => ({ ...r, simulation: { reached:1, best } }));
+  const forge = () => { setRun(r => ({ ...r, lineupWidth: width })); go('op-lineup'); };
+  // Walking away counts as falling here: the run ends, paid by boards already won.
+  const abandon = () => {
+    setRun(r => r.gauntlet ? { ...r, gauntlet: { ...r.gauntlet, phase:'over', offers:null } } : r);
+    go('gauntlet');
+  };
 
-  // floors low → high so the ascent reads top-down (floor 1 first, deeper = higher)
-  const floors = [];
-  for (let f = 1; f <= SIM_TOTAL_FLOORS; f++) floors.push(f);
+  const accent = 'var(--coral)';
+  const note = { fontFamily:'Cormorant Garamond, serif', fontSize:12.5, fontStyle:'italic',
+    color:'var(--bone-dim)', lineHeight:1.5 };
 
   return (
     <div style={{ position:'absolute', inset:0, display:'grid', gridTemplateColumns:'1fr 380px', gap:0 }}>
-      {/* LEFT — the tower */}
+      {/* LEFT — the rules of the trial */}
       <div style={{ overflowY:'auto', padding:'24px 28px' }}>
         <div style={{ marginBottom:18 }}>
-          <div className="eyebrow" style={{ color:'var(--bio-dim)' }}>◆ The Drowned Spire</div>
+          <div className="eyebrow" style={{ color:'var(--bio-dim)' }}>◆ The Four Trials</div>
           <h1 style={{ fontFamily:'Cinzel, serif', fontSize:30, margin:'4px 0 6px', letterSpacing:'0.08em' }}>
-            SIMULATION
+            GAUNTLET
           </h1>
           <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:14, color:'var(--bone-dim)',
-            fontStyle:'italic', lineHeight:1.6, maxWidth:620 }}>
-            A straight ascent through {SIM_TOTAL_FLOORS} floors. Each holds a single demand —
-            <b style={{ color:'var(--bone)' }}> destroy the enemy commander</b> — and the next floor opens only when this one falls.
+            fontStyle:'italic', lineHeight:1.6, maxWidth:640 }}>
+            Four boards drawn from the Board Pool, fought back to back with one lineup of thy followers.
+            Clear a board to earn Souls and spend them before the next.
+            <b style={{ color:'var(--bone)' }}> Fall on any board and the gauntlet ends where it stands.</b>
           </div>
         </div>
 
-        {/* progress bar */}
-        <div style={{ marginBottom:18 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', fontFamily:'JetBrains Mono, monospace',
-            fontSize:9, color:'var(--bone-dim)', letterSpacing:'0.2em', marginBottom:5 }}>
-            <span>ASCENT · FLOOR {reached} / {SIM_TOTAL_FLOORS}</span>
-            <span>BEST DEPTH · {best}</span>
-          </div>
-          <div style={{ height:6, background:'var(--abyss-1)', border:'1px solid var(--abyss-3)', position:'relative' }}>
-            <div style={{ position:'absolute', inset:0, width:`${(reached-1)/SIM_TOTAL_FLOORS*100}%`,
-              background:'linear-gradient(90deg, oklch(0.45 0.1 188), var(--bio))' }}/>
-          </div>
-        </div>
-
-        {/* floor ladder */}
-        <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-          {floors.map(f => {
-            const m = simFloorMeta(f);
-            const st = status(f);
-            const isSel = selected === f;
-            const locked = st === 'locked';
+        <div className="caps" style={{ marginBottom:8 }}>The Four Boards</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:8, marginBottom:20 }}>
+          {GAUNTLET_STAGES.map((id, i) => {
+            const o = gauntletObjective(id);
+            const tone = id === 'leader' ? 'var(--coral)' : 'var(--brass)';
             return (
-              <div key={f}
-                ref={f === reached ? currentRef : null}
-                className={locked ? '' : 'hoverable'}
-                onClick={()=> locked ? null : setSelected(f)}
-                style={{
-                  display:'flex', alignItems:'center', gap:12, padding:'9px 14px',
-                  cursor: locked ? 'not-allowed' : 'pointer',
-                  background: isSel ? 'linear-gradient(90deg, var(--abyss-3), var(--abyss-2))'
-                    : st === 'current' ? 'oklch(0.28 0.05 188 / 0.5)' : 'var(--abyss-1)',
-                  border:'1px solid', borderColor: isSel ? m.accent : st === 'current' ? 'var(--bio-dim)' : 'var(--abyss-3)',
-                  borderLeft: `3px solid ${st === 'cleared' ? 'var(--bio-dim)' : st === 'current' ? 'var(--bio)' : m.isApex ? m.accent : 'var(--abyss-4)'}`,
-                  opacity: locked ? 0.4 : 1,
-                }}>
-                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:13, color: m.isApex ? m.accent : 'var(--bone-dim)',
-                  width:34, textAlign:'right', letterSpacing:'0.05em' }}>
-                  {String(f).padStart(2,'0')}
-                </div>
-                <div style={{ fontFamily:'Cinzel, serif', fontSize:16, width:22, textAlign:'center',
-                  color: m.accent, textShadow: m.isApex ? `0 0 10px ${m.accent}` : 'none' }}>
-                  {m.isApex ? '✠' : m.isElite ? '◈' : '♟'}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone)',
-                    letterSpacing:'0.04em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                    {locked ? '████████' : m.name}
-                  </div>
-                  <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, color:'var(--bone-dim)',
-                    letterSpacing:'0.18em', textTransform:'uppercase', marginTop:2 }}>
-                    {m.tier} · W{m.width} · THREAT {m.threat}
-                  </div>
-                </div>
-                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, letterSpacing:'0.18em',
-                  color: st === 'cleared' ? 'var(--bio)' : st === 'current' ? 'var(--brass)' : 'var(--bone-dim)' }}>
-                  {st === 'cleared' ? '✓ CLEARED' : st === 'current' ? '◈ CURRENT' : '🔒 LOCKED'}
-                </div>
+              <div key={i} style={{ padding:'12px 14px', background:'var(--abyss-1)', border:'1px solid var(--abyss-3)',
+                borderTop:`3px solid ${tone}` }}>
+                <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, letterSpacing:'0.22em',
+                  color:'var(--bone-dim)' }}>STAGE {i + 1}</div>
+                <div style={{ fontFamily:'Cinzel, serif', fontSize:14, color:tone, marginTop:3 }}>{o.glyph} {o.name}</div>
+                <div style={{ ...note, fontSize:11.5, marginTop:3 }}>{o.desc}</div>
               </div>
             );
           })}
         </div>
+
+        <div className="caps" style={{ marginBottom:8 }}>Between Boards · W{width}</div>
+        <div style={{ ...note, marginBottom:8 }}>
+          After each board cleared, the reliquary opens. Buy as often as thy Souls allow:
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:20 }}>
+          {[
+            ['☠', 'Reclaim the Fallen', 'Every follower captured so far, offered back for Souls.'],
+            ['♙', `${offers.units} Recruits`, 'Followers drawn at random from thy own roster.'],
+            ['⊕', `${offers.augs} Augments`, 'Grafted onto a follower with a free port of that kind.'],
+            ['✠', `${offers.relics} Relic${offers.relics === 1 ? '' : 's'}`, 'Each may take the place of the relic thou carriest.'],
+          ].map(([glyph, title, desc]) => (
+            <div key={title} style={{ display:'flex', gap:12, padding:'10px 14px', background:'var(--abyss-1)',
+              border:'1px solid var(--abyss-3)' }}>
+              <span style={{ fontFamily:'Cinzel, serif', fontSize:20, color:'var(--brass)', width:22, textAlign:'center' }}>{glyph}</span>
+              <div>
+                <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone)' }}>{title}</div>
+                <div style={{ ...note, fontSize:11.5 }}>{desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ ...note, marginTop:-12, marginBottom:20, fontSize:11.5 }}>
+          Whatever is bought lives only inside the gauntlet — thy roster, hold and relics are left untouched.
+        </div>
+
+        <div className="caps" style={{ marginBottom:8 }}>Reward · by Boards Won</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:8, marginBottom:20 }}>
+          {GAUNTLET_REWARDS.slice(1).map((v, i) => (
+            <div key={i} style={{ padding:'10px 14px', background:'var(--abyss-1)', border:'1px solid var(--abyss-3)',
+              textAlign:'center' }}>
+              <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8.5, letterSpacing:'0.2em',
+                color:'var(--bone-dim)' }}>{i + 1} WIN{i ? 'S' : ''}</div>
+              <div style={{ fontFamily:'Cinzel, serif', fontSize:15, color:'oklch(0.78 0.12 85)', marginTop:3 }}>✦ {v} LP</div>
+              <div style={{ fontFamily:'Cinzel, serif', fontSize:15, color:'oklch(0.72 0.14 150)' }}>✧ {v} DNA</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="caps" style={{ marginBottom:8 }}>Record</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:8 }}>
+          <ReflectMeta k="Gauntlets run" v={rec.runs}/>
+          <ReflectMeta k="Completed"     v={rec.completed}/>
+          <ReflectMeta k="Best"          v={`${rec.bestWins} / ${GAUNTLET_STAGES.length}`}/>
+          <ReflectMeta k="LP held"       v={(run.res || {}).lp || 0}/>
+        </div>
       </div>
 
-      {/* RIGHT — selected floor dossier + launch */}
+      {/* RIGHT — arm the run, or resume the one under way */}
       <div style={{ borderLeft:'1px solid var(--abyss-4)',
         background:'linear-gradient(180deg, var(--abyss-1), var(--abyss-0))',
         overflowY:'auto', padding:'24px 22px' }}>
-
-        <div style={{ position:'relative', padding:'22px 18px', marginBottom:18,
-          background:`linear-gradient(180deg, ${meta.accent.replace(')',' / 0.18)')}, transparent 80%)`,
-          border:`1px solid ${meta.accent.replace(')',' / 0.6)')}`, borderLeft:`3px solid ${meta.accent}` }}>
-          <div style={{ fontFamily:'Cinzel, serif', fontSize:70, color:meta.accent, lineHeight:1,
-            textShadow:`0 0 28px ${meta.accent}`, position:'absolute', top:8, right:14, opacity:0.3 }}>
-            {meta.isApex ? '✠' : meta.isElite ? '◈' : '♟'}
-          </div>
-          <div className="eyebrow" style={{ color:meta.accent }}>
-            Floor {meta.f} · {meta.tier} commander
-          </div>
-          <div style={{ fontFamily:'Cinzel, serif', fontSize:22, letterSpacing:'0.04em', marginTop:4,
-            color:'var(--bone)' }}>
-            {meta.name}
-          </div>
-          <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:13, fontStyle:'italic',
-            color:'var(--bone-dim)', marginTop:6, lineHeight:1.5 }}>
-            &ldquo;Another crown to drag into the dark.&rdquo;
-          </div>
-        </div>
-
-        <div className="caps" style={{ marginBottom:8 }}>Objective</div>
-        <div style={{ padding:'14px 16px', background:'var(--abyss-1)', border:'1px solid var(--abyss-3)',
-          borderLeft:'3px solid var(--coral)', marginBottom:14 }}>
-          <div style={{ fontFamily:'Cinzel, serif', fontSize:15, color:'var(--coral)', letterSpacing:'0.05em',
-            display:'flex', alignItems:'center', gap:8 }}>
-            <span>♚</span> Destroy Enemy Commander
-          </div>
-          <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:12.5, color:'var(--bone-dim)',
-            fontStyle:'italic', marginTop:5, lineHeight:1.5 }}>
-            The only victory the Spire recognises. No marks, no escorts — fell the commander and the floor is yours.
-          </div>
-        </div>
-
-        <div className="caps" style={{ marginBottom:8 }}>Conditions</div>
-        <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:18 }}>
-          <ReflectMeta k="Board"       v={`W${meta.width} formation`}/>
-          <ReflectMeta k="Threat"      v={`${meta.threat} / 10`}/>
-          <ReflectMeta k="Tier"        v={meta.tier.toUpperCase()}/>
-          <ReflectMeta k="Status"      v={status(meta.f)==='cleared' ? '✓ Already cleared' : status(meta.f)==='current' ? '◈ Next ascent' : '🔒 Locked'}/>
-        </div>
-
-        {/* Lineup choice — must match this floor's width (like Assignment) */}
-        <div className="caps" style={{ marginBottom:6 }}>Choose a Lineup</div>
-        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bio-dim)',
-          letterSpacing:'0.18em', marginBottom:8 }}>
-          REQUIRED · W{reqWidth}
-        </div>
-        {eligibleLineups.length === 0 ? (
-          <div style={{ padding:'16px 14px', border:'1px dashed var(--abyss-4)', background:'var(--abyss-1)',
-            textAlign:'center', marginBottom:14 }}>
-            <div style={{ fontFamily:'Cinzel, serif', fontSize:13, color:'var(--bone-dim)',
-              fontStyle:'italic', lineHeight:1.5, marginBottom:10 }}>
-              No W{reqWidth} lineup has been arrayed.
+        {g ? (
+          <>
+            <div style={{ padding:'18px 16px', marginBottom:16, background:'var(--abyss-1)',
+              border:`1px solid ${accent}`, borderLeft:`3px solid ${accent}` }}>
+              <div className="eyebrow" style={{ color:accent }}>Gauntlet under way</div>
+              <div style={{ fontFamily:'Cinzel, serif', fontSize:20, color:'var(--bone)', marginTop:4 }}>
+                {g.phase === 'over' ? 'Awaiting the reckoning'
+                  : g.phase === 'shop' ? `Reliquary · before stage ${g.stage + 2}` : `Stage ${g.stage + 1} of ${GAUNTLET_STAGES.length}`}
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:12 }}>
+                <ReflectMeta k="Lineup" v={`${g.lineupName} · W${g.width}`}/>
+                <ReflectMeta k="Boards won" v={`${g.wins} / ${GAUNTLET_STAGES.length}`}/>
+                <ReflectMeta k="Souls" v={g.souls}/>
+                <ReflectMeta k="Followers" v={`${g.army.length} fielded · ${g.fallen.length} captured`}/>
+              </div>
             </div>
-            <button className="btn primary" onClick={forge}
-              style={{ width:'100%', justifyContent:'center', padding:'10px' }}>
-              + Forge W{reqWidth} Lineup
+            <button className="btn primary" onClick={()=>go('gauntlet')}
+              style={{ width:'100%', justifyContent:'center', padding:'14px', fontSize:14 }}>
+              {g.phase === 'over' ? 'Claim the Reward →' : 'Resume Gauntlet →'}
             </button>
-          </div>
+            {g.phase === 'match' && (
+              <div style={{ marginTop:8, fontFamily:'JetBrains Mono, monospace', fontSize:8.5, color:'var(--bone-dim)',
+                letterSpacing:'0.14em', textAlign:'center' }}>‣ THE BOARD RESTARTS FROM ITS OPENING POSITION</div>
+            )}
+            {g.phase !== 'over' && (
+              <button className="btn ghost sm" onMouseLeave={()=>setConfirmAbandon(false)}
+                onClick={()=> confirmAbandon ? abandon() : setConfirmAbandon(true)}
+                style={{ width:'100%', justifyContent:'center', marginTop:14, color:'oklch(0.7 0.15 25)' }}>
+                {confirmAbandon ? `✕ Confirm · end it with ${g.wins} win${g.wins === 1 ? '' : 's'}` : '✕ Abandon Gauntlet'}
+              </button>
+            )}
+          </>
         ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:14 }}>
-            {eligibleLineups.map(ln => (
-              <LineupMiniCard key={ln.id} lineup={ln} roster={run.roster || []}
-                accent={meta.accent} selected={selectedLineupId === ln.id}
-                onClick={()=>setSelectedLineupId(ln.id)}/>
-            ))}
-            <button className="btn ghost sm" onClick={forge}
-              style={{ justifyContent:'center', padding:'8px' }}>
-              ✎ Forge / Edit W{reqWidth} Lineup
+          <>
+            <div className="caps" style={{ marginBottom:8 }}>Formation Width</div>
+            <div style={{ display:'flex', gap:6, marginBottom:16 }}>
+              {FORMATIONS.map(f => {
+                const isSel = width === f.w;
+                const n = (pools[f.w] || []).length;
+                return (
+                  <button key={f.w} onClick={()=>setWidth(f.w)} title={`${f.title} · ${n} board${n === 1 ? '' : 's'} in the pool`}
+                    style={{
+                      flex:1, padding:'8px 6px', cursor:'pointer', textAlign:'center',
+                      background: isSel ? 'linear-gradient(180deg, var(--abyss-3), var(--abyss-2))' : 'var(--abyss-2)',
+                      border:`1px solid ${isSel ? f.color : 'var(--abyss-4)'}`,
+                      borderTop:`3px solid ${isSel ? f.color : 'var(--abyss-4)'}`,
+                      color: isSel ? f.color : 'var(--bone-dim)',
+                    }}>
+                    <div style={{ fontFamily:'Cinzel, serif', fontSize:15 }}>{f.label}</div>
+                    <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.12em', marginTop:2,
+                      color: n ? 'var(--bone-dim)' : 'var(--abyss-4)' }}>{n} BOARD{n === 1 ? '' : 'S'}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="caps" style={{ marginBottom:8 }}>Board Pool · W{width}</div>
+            {pool.length === 0 ? (
+              <div style={{ padding:'12px 14px', border:'1px dashed var(--abyss-4)', marginBottom:16, ...note }}>
+                No board waits in the pool for a W{width} lineup. In the Board Editor, tag a board
+                “Appear on Board List” with Max Lineup Width W{width}.
+              </div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:16, maxHeight:196, overflowY:'auto' }}>
+                {pool.map(b => {
+                  const o = gauntletObjective(b.objective);
+                  return (
+                    <div key={b.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'5px 8px',
+                      background:'var(--abyss-1)', border:'1px solid var(--abyss-3)' }}>
+                      <div style={{ width:34, height:34, display:'grid', placeItems:'center' }}>
+                        <ForgeBoardThumb board={b} box={34}/>
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontFamily:'Cinzel, serif', fontSize:12, color:'var(--bone)', whiteSpace:'nowrap',
+                          overflow:'hidden', textOverflow:'ellipsis' }}>{b.name}</div>
+                        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.14em',
+                          color:'var(--bone-dim)' }}>{b.size} · {b.w}×{b.h} · {o.glyph} {o.name.toUpperCase()}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="caps" style={{ marginBottom:8 }}>Choose a Lineup</div>
+            {eligible.length === 0 ? (
+              <div style={{ padding:'16px 14px', border:'1px dashed var(--abyss-4)', background:'var(--abyss-1)',
+                textAlign:'center', marginBottom:14 }}>
+                <div style={{ ...note, fontSize:13, marginBottom:10 }}>No W{width} lineup has been arrayed.</div>
+                <button className="btn primary" onClick={forge} style={{ width:'100%', justifyContent:'center', padding:'10px' }}>
+                  + Forge W{width} Lineup
+                </button>
+              </div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:14 }}>
+                {eligible.map(ln => (
+                  <LineupMiniCard key={ln.id} lineup={ln} roster={run.roster || []}
+                    accent={accent} selected={lineupId === ln.id} onClick={()=>setLineupId(ln.id)}/>
+                ))}
+                <button className="btn ghost sm" onClick={forge} style={{ justifyContent:'center', padding:'8px' }}>
+                  ✎ Forge / Edit W{width} Lineup
+                </button>
+              </div>
+            )}
+
+            {lineup && (
+              <div style={{ marginBottom:14 }}>
+                <div className="caps" style={{ marginBottom:6 }}>Relic Carried In</div>
+                <ReflectMeta k={relic ? relic.glyph : '∅'} v={relic ? relic.name : 'None — the lineup carries no relic'}/>
+              </div>
+            )}
+
+            <div className="divider fancy"><span style={{ color:accent }}>◈ ENTER ◈</span></div>
+            <button className="btn primary" onClick={begin} disabled={!canBegin}
+              style={{ width:'100%', justifyContent:'center', padding:'14px', fontSize:14 }}>
+              Begin Gauntlet
             </button>
-          </div>
-        )}
-
-        <div className="divider fancy"><span style={{ color:meta.accent }}>◈ ASCEND ◈</span></div>
-        <button className="btn primary" onClick={begin}
-          disabled={!canBegin}
-          style={{ width:'100%', justifyContent:'center', padding:'14px', fontSize:14 }}>
-          {selected > reached ? 'Floor Locked'
-            : selected < reached ? `Re-enter Floor ${meta.f}` : `Begin Floor ${meta.f}`}
-        </button>
-        <div style={{ marginTop:8, fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
-          letterSpacing:'0.15em', textAlign:'center' }}>
-          {selected > reached ? '‣ CLEAR THE FLOOR BELOW FIRST'
-            : !selectedLineup ? '‣ ARRAY A LINEUP FIRST'
-            : '‣ ONE COMMANDER · ONE OUTCOME'}
-        </div>
-
-        {reached > 1 && (
-          <button className="btn ghost sm" onClick={resetRun}
-            style={{ width:'100%', justifyContent:'center', marginTop:14 }}>
-            ↺ Reset Ascent
-          </button>
+            <div style={{ marginTop:8, fontFamily:'JetBrains Mono, monospace', fontSize:9, color:'var(--bone-dim)',
+              letterSpacing:'0.15em', textAlign:'center' }}>
+              {pool.length === 0 ? '‣ THE POOL HAS NO BOARD FOR THIS WIDTH'
+                : !lineup ? '‣ ARRAY A LINEUP FIRST'
+                : '‣ FOUR BOARDS · ONE LIFE'}
+            </div>
+          </>
         )}
       </div>
     </div>
